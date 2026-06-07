@@ -18,6 +18,8 @@ A standalone Android voice recorder, transcription, and AI analysis application.
 |---|---|
 | **Hardware** | Standard Android device with built-in microphone (Bluetooth mic/headset optional) |
 | **Android** | ARM64, API 26+ (Android 8.0) |
+| **RAM** | 4 GB minimum (6 GB or more recommended for smooth execution) |
+| **GPU** | Vulkan 1.1+ support recommended for GPU acceleration of Gemma 3 |
 | **Storage** | ~770 MB free (Gemma 3 1B: ~555 MB · Whisper base.en: ~160 MB · text embedder: ~26 MB) |
 
 Tested on Samsung Galaxy S24 Ultra.

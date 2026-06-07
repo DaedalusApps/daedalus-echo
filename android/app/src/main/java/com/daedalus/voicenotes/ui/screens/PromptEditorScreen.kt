@@ -30,18 +30,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.daedalus.voicenotes.ai.DEFAULT_PROMPT
-import com.daedalus.voicenotes.ui.components.DeviceStatusRow
-import com.daedalus.voicenotes.viewmodel.DeviceViewModel
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PromptEditorScreen(deviceViewModel: DeviceViewModel, onBack: () -> Unit) {
+fun PromptEditorScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("daedalus_prefs", Context.MODE_PRIVATE) }
     var promptText by remember {
         mutableStateOf(prefs.getString("custom_prompt", null) ?: DEFAULT_PROMPT)
     }
-    val bleState by deviceViewModel.bleManager.bleState.collectAsState()
 
     Scaffold(
         topBar = {
@@ -65,11 +61,7 @@ fun PromptEditorScreen(deviceViewModel: DeviceViewModel, onBack: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            DeviceStatusRow(
-                bleState = bleState,
-                onScan = { deviceViewModel.scan() },
-                onCancelScan = { deviceViewModel.disconnect() }
-            )
+
 
             Column(
                 modifier = Modifier

@@ -68,7 +68,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import java.io.File
-import com.daedalus.voicenotes.ui.components.DeviceStatusRow
 import com.daedalus.voicenotes.ui.mindmap.MindMapCanvas
 import com.daedalus.voicenotes.viewmodel.RecordingViewModel
 
@@ -77,7 +76,6 @@ import com.daedalus.voicenotes.viewmodel.RecordingViewModel
 fun NoteDetailScreen(
     filename: String,
     recordingViewModel: RecordingViewModel,
-    bleManager: com.daedalus.voicenotes.ble.BleManager,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -122,22 +120,18 @@ fun NoteDetailScreen(
     var showInNoteSearch by remember { mutableStateOf(false) }
     var inNoteQuery by remember { mutableStateOf("") }
 
-    val bleState by bleManager.bleState.collectAsState()
-    val isConnected = bleState.connectionState == com.daedalus.voicenotes.ble.ConnectionState.CONNECTED
-
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text("Delete recording?") },
-            text = { Text("This will remove the recording from BOTH this app and the FW920 hardware permanently. The device must remain connected.") },
+            text = { Text("This will permanently remove the recording and all its AI-generated analysis data.") },
             confirmButton = {
                 Button(
                     onClick = {
                         showDeleteDialog = false
-                        recordingViewModel.deleteRecording(filename, bleManager)
+                        recordingViewModel.deleteRecording(filename)
                         onBack()
-                    },
-                    enabled = isConnected
+                    }
                 ) { Text("Delete") }
             },
             dismissButton = {
@@ -250,11 +244,7 @@ fun NoteDetailScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            DeviceStatusRow(
-                bleState = bleState,
-                onScan = { /* Detail screen usually doesn't trigger scan */ },
-                onCancelScan = { bleManager.disconnect() }
-            )
+
 
             TabRow(selectedTabIndex = selectedTab) {
                 listOf("Transcript", "Summary", "Mind Map", "Ask").forEachIndexed { index, title ->

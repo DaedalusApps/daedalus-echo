@@ -30,8 +30,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daedalus.voicenotes.ui.mindmap.GlobalGraph
 import com.daedalus.voicenotes.ui.mindmap.GraphNode
-import com.daedalus.voicenotes.ui.components.DeviceStatusRow
-import com.daedalus.voicenotes.viewmodel.DeviceViewModel
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -47,12 +45,10 @@ data class PositionedGraphNode(
 @Composable
 fun GlobalMindMapScreen(
     graph: GlobalGraph,
-    deviceViewModel: DeviceViewModel,
     onNavigateToNote: (String) -> Unit,
     onBack: () -> Unit
 ) {
     var showHelp by remember { mutableStateOf(false) }
-    val bleState by deviceViewModel.bleManager.bleState.collectAsState()
 
     if (showHelp) {
         AlertDialog(
@@ -118,12 +114,6 @@ fun GlobalMindMapScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            DeviceStatusRow(
-                bleState = bleState,
-                onScan = { deviceViewModel.scan() },
-                onCancelScan = { deviceViewModel.disconnect() }
-            )
-
             if (graph.nodes.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("No topics analyzed yet.", style = MaterialTheme.typography.titleMedium)

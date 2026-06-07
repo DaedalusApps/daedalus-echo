@@ -1,5 +1,7 @@
 package com.daedalus.voicenotes.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,8 +23,8 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -44,7 +46,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,23 +60,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.daedalus.voicenotes.ble.ConnectionState
 import com.daedalus.voicenotes.data.model.AudioUtils
 import com.daedalus.voicenotes.data.model.DateUtils
 import com.daedalus.voicenotes.data.model.Recording
-import com.daedalus.voicenotes.ui.components.DeviceStatusRow
-import com.daedalus.voicenotes.viewmodel.DeviceViewModel
 import com.daedalus.voicenotes.viewmodel.RecordingViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecordingsScreen(
-    viewModel: DeviceViewModel,
     recordingViewModel: RecordingViewModel,
     onNavigateToNote: (String) -> Unit,
     onBack: () -> Unit
 ) {
-    val bleState by viewModel.bleManager.bleState.collectAsState()
     val syncProgress by recordingViewModel.syncProgress.collectAsState()
     val recordings by recordingViewModel.filteredRecordings.collectAsState()
     val searchQuery by recordingViewModel.searchQuery.collectAsState()
@@ -83,12 +79,12 @@ fun RecordingsScreen(
     var selectedFilenames by remember { mutableStateOf(setOf<String>()) }
     val isSelectionMode = selectedFilenames.isNotEmpty()
 
-    // Auto-scan when disconnected, refresh files when connected
-    LaunchedEffect(bleState.connectionState) {
-        when (bleState.connectionState) {
-            ConnectionState.DISCONNECTED -> viewModel.scan()
-            ConnectionState.CONNECTED -> viewModel.refreshFiles()
-            else -> Unit
+    // File picker launcher for importing audio
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            recordingViewModel.syncFiles(uris)
         }
     }
 
@@ -113,16 +109,11 @@ fun RecordingsScreen(
                 },
                 actions = {
                     if (isSelectionMode) {
-                        val isConnected = bleState.connectionState == ConnectionState.CONNECTED
                         IconButton(
                             onClick = {
-                                recordingViewModel.deleteMultipleRecordings(
-                                    selectedFilenames.toList(),
-                                    viewModel.bleManager
-                                )
+                                recordingViewModel.deleteMultipleRecordings(selectedFilenames.toList())
                                 selectedFilenames = emptySet()
-                            },
-                            enabled = isConnected
+                            }
                         ) {
                             Icon(
                                 Icons.Default.Delete,
@@ -130,8 +121,8 @@ fun RecordingsScreen(
                             )
                         }
                     } else {
-                        IconButton(onClick = { recordingViewModel.syncAllBleFiles(viewModel.bleManager) }) {
-                            Icon(Icons.Default.Sync, contentDescription = "Sync via BLE")
+                        IconButton(onClick = { filePickerLauncher.launch("audio/*") }) {
+                            Icon(Icons.Default.FolderOpen, contentDescription = "Import audio files")
                         }
                     }
                 },
@@ -145,13 +136,6 @@ fun RecordingsScreen(
         }
     ) { innerPadding ->
         Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-
-            // Device status area
-            DeviceStatusRow(
-                bleState = bleState,
-                onScan = { viewModel.scan() },
-                onCancelScan = { viewModel.disconnect() }
-            )
 
             // Sync progress
             if (syncProgress != null) {
@@ -168,13 +152,6 @@ fun RecordingsScreen(
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.weight(1f)
                     )
-                    IconButton(onClick = { recordingViewModel.cancelSync() }) {
-                        Icon(
-                            Icons.Default.Close,
-                            contentDescription = "Cancel sync",
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
                 }
             }
 
@@ -217,16 +194,16 @@ fun RecordingsScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Connect the FW920 via BLE then tap the sync button.",
+                            text = "Record locally or import audio files from your device.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
                         )
                         Spacer(modifier = Modifier.height(16.dp))
-                        OutlinedButton(onClick = { recordingViewModel.syncAllBleFiles(viewModel.bleManager) }) {
-                            Icon(Icons.Default.Sync, contentDescription = null)
+                        OutlinedButton(onClick = { filePickerLauncher.launch("audio/*") }) {
+                            Icon(Icons.Default.FolderOpen, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
-                            Text("Sync via BLE")
+                            Text("Import Audio Files")
                         }
                     }
                 }
@@ -242,7 +219,6 @@ fun RecordingsScreen(
                         val isSelected = selectedFilenames.contains(recording.filename)
                         RecordingSwipeToDeleteCard(
                             recording = recording,
-                            bleManager = viewModel.bleManager,
                             isSelected = isSelected,
                             isSelectionMode = isSelectionMode,
                             onPlay = {
@@ -259,10 +235,7 @@ fun RecordingsScreen(
                                 selectedFilenames = selectedFilenames + recording.filename
                             },
                             onDelete = {
-                                recordingViewModel.deleteRecording(
-                                    recording.filename,
-                                    viewModel.bleManager
-                                )
+                                recordingViewModel.deleteRecording(recording.filename)
                             },
                             onEditSave = { title, summary ->
                                 recordingViewModel.updateTitleAndSummary(
@@ -283,7 +256,6 @@ fun RecordingsScreen(
 @Composable
 private fun RecordingSwipeToDeleteCard(
     recording: Recording,
-    bleManager: com.daedalus.voicenotes.ble.BleManager,
     isSelected: Boolean,
     isSelectionMode: Boolean,
     onPlay: () -> Unit,
@@ -291,9 +263,6 @@ private fun RecordingSwipeToDeleteCard(
     onDelete: () -> Unit,
     onEditSave: (title: String, shortSummary: String) -> Unit
 ) {
-    val bleState by bleManager.bleState.collectAsState()
-    val isConnected = bleState.connectionState == ConnectionState.CONNECTED
-
     var showConfirm by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var editTitle by remember(recording.filename) { mutableStateOf(recording.title) }
@@ -346,11 +315,10 @@ private fun RecordingSwipeToDeleteCard(
         AlertDialog(
             onDismissRequest = { showConfirm = false },
             title = { Text("Delete recording?") },
-            text = { Text("This will remove the recording from BOTH this app and the FW920 permanently. The device must be connected.") },
+            text = { Text("This will permanently remove the recording and all its AI-generated analysis data.") },
             confirmButton = {
                 Button(
-                    onClick = { showConfirm = false; onDelete() },
-                    enabled = isConnected
+                    onClick = { showConfirm = false; onDelete() }
                 ) { Text("Delete") }
             },
             dismissButton = {
@@ -373,7 +341,7 @@ private fun RecordingSwipeToDeleteCard(
                     Icon(
                         Icons.Default.Delete,
                         contentDescription = "Delete",
-                        tint = if (isConnected) Color.Red else Color.Red.copy(alpha = 0.3f)
+                        tint = Color.Red
                     )
                 }
             }

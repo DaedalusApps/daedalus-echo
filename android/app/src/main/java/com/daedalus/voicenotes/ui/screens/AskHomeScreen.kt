@@ -1,6 +1,9 @@
 package com.daedalus.voicenotes.ui.screens
 
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,18 +19,29 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -47,23 +61,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.daedalus.voicenotes.ai.MarkdownExporter
-import com.daedalus.voicenotes.ble.ConnectionState
+import com.daedalus.voicenotes.data.model.AudioUtils
 import com.daedalus.voicenotes.data.model.Recording
-import com.daedalus.voicenotes.ui.components.DeviceStatusRow
-import com.daedalus.voicenotes.viewmodel.DeviceViewModel
 import com.daedalus.voicenotes.viewmodel.RecordingViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AskHomeScreen(
     recordingViewModel: RecordingViewModel,
-    deviceViewModel: DeviceViewModel,
     onNavigateToNote: (String) -> Unit,
     onNavigateToRecordings: () -> Unit,
     onNavigateToExpandedMap: () -> Unit,
@@ -72,7 +85,39 @@ fun AskHomeScreen(
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
 
-    val bleState by deviceViewModel.bleManager.bleState.collectAsState()
+    // Local Recording State
+    val isRecording by recordingViewModel.isRecording.collectAsState()
+    val isPaused by recordingViewModel.isPaused.collectAsState()
+    val recordingDurationSeconds by recordingViewModel.recordingDurationSeconds.collectAsState()
+    val useBluetoothMic by recordingViewModel.useBluetoothMic.collectAsState()
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        recordingViewModel.setUseBluetoothMic(isGranted)
+    }
+
+    val toggleBluetoothMic = {
+        if (useBluetoothMic) {
+            recordingViewModel.setUseBluetoothMic(false)
+        } else {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.BLUETOOTH_CONNECT
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                
+                if (hasPermission) {
+                    recordingViewModel.setUseBluetoothMic(true)
+                } else {
+                    permissionLauncher.launch(android.Manifest.permission.BLUETOOTH_CONNECT)
+                }
+            } else {
+                recordingViewModel.setUseBluetoothMic(true)
+            }
+        }
+    }
+
     val libraryAnswer by recordingViewModel.libraryAnswer.collectAsState()
     val librarySources by recordingViewModel.librarySources.collectAsState()
     val libraryQuestion by recordingViewModel.libraryQuestion.collectAsState()
@@ -82,15 +127,6 @@ fun AskHomeScreen(
     val exportIntent by recordingViewModel.exportIntent.collectAsState()
 
     var question by remember { mutableStateOf("") }
-
-    // Keep the device connecting in the background as on app open (no BLE chrome here).
-    LaunchedEffect(bleState.connectionState) {
-        when (bleState.connectionState) {
-            ConnectionState.DISCONNECTED -> deviceViewModel.scan()
-            ConnectionState.CONNECTED -> deviceViewModel.refreshFiles()
-            else -> Unit
-        }
-    }
 
     // Launch share sheet when an export intent is ready.
     LaunchedEffect(exportIntent) {
@@ -104,7 +140,7 @@ fun AskHomeScreen(
         modifier = Modifier.navigationBarsPadding(),
         topBar = {
             TopAppBar(
-                title = { Text("Daedalus Voicenotes") },
+                title = { Text("Daedalus Echo") },
                 actions = {
                     IconButton(onClick = onNavigateToRecordings) {
                         Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Recordings")
@@ -121,17 +157,8 @@ fun AskHomeScreen(
             )
         }
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            DeviceStatusRow(
-                bleState = bleState,
-                onScan = { deviceViewModel.scan() },
-                onCancelScan = { deviceViewModel.disconnect() }
-            )
-
+        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            // Main content
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -173,7 +200,7 @@ fun AskHomeScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(max = 240.dp)
+                                .heightIn(max = 200.dp)
                                 .verticalScroll(rememberScrollState())
                                 .padding(12.dp)
                         ) {
@@ -234,6 +261,118 @@ fun AskHomeScreen(
                         }
                     } else {
                         GlobalMindMapCanvas(graph, onNavigateToNote)
+                    }
+                }
+                
+                // Bottom spacing to avoid overlapping with floating recording panel
+                Spacer(modifier = Modifier.height(80.dp))
+            }
+
+            // Floating Local Recording Control Panel Overlay
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                if (isRecording) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // Pulsing/Glowing recording indicator
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isPaused) Color.Gray else Color.Red)
+                            )
+                            
+                            // Elapsed duration text
+                            Text(
+                                text = AudioUtils.formatDuration(recordingDurationSeconds * 1000),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            // Bluetooth Mic Selector
+                            IconButton(onClick = toggleBluetoothMic) {
+                                Icon(
+                                    imageVector = if (useBluetoothMic) Icons.Default.BluetoothConnected else Icons.Default.Bluetooth,
+                                    contentDescription = "Bluetooth Microphone",
+                                    tint = if (useBluetoothMic) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            // Pause/Resume button
+                            IconButton(onClick = {
+                                if (isPaused) recordingViewModel.resumeLocalRecording()
+                                else recordingViewModel.pauseLocalRecording()
+                            }) {
+                                Icon(
+                                    imageVector = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                                    contentDescription = if (isPaused) "Resume" else "Pause"
+                                )
+                            }
+
+                            // Stop button
+                            Button(
+                                onClick = { recordingViewModel.stopLocalRecording() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.Red, contentColor = Color.White)
+                            ) {
+                                Icon(Icons.Default.Stop, contentDescription = "Stop recording", modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Stop")
+                            }
+                        }
+                    }
+                } else {
+                    // Bluetooth quick toggle next to FAB
+                    Row(
+                        modifier = Modifier.align(Alignment.BottomEnd),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Card(
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .clickable { toggleBluetoothMic() }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (useBluetoothMic) Icons.Default.BluetoothConnected else Icons.Default.Bluetooth,
+                                    contentDescription = null,
+                                    tint = if (useBluetoothMic) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = "BT Mic",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (useBluetoothMic) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                        
+                        FloatingActionButton(
+                            onClick = { recordingViewModel.startLocalRecording() },
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ) {
+                            Icon(Icons.Default.Mic, contentDescription = "Start recording")
+                        }
                     }
                 }
             }

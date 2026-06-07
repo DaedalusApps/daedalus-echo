@@ -4,7 +4,6 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.daedalus.voicenotes.ui.screens.AskHomeScreen
 import com.daedalus.voicenotes.ui.theme.DaedalusTheme
-import com.daedalus.voicenotes.viewmodel.DeviceViewModel
 import com.daedalus.voicenotes.viewmodel.RecordingViewModel
 import io.mockk.every
 import io.mockk.mockk
@@ -18,14 +17,12 @@ class AskHomeScreenTest {
     @get:Rule
     val composeTestRule = createComposeRule()
 
-    private val deviceViewModel = mockk<DeviceViewModel>(relaxed = true)
     private val recordingViewModel = mockk<RecordingViewModel>(relaxed = true)
 
     private val libraryAnswerFlow = MutableStateFlow<String?>(null)
     private val libraryQuestionFlow = MutableStateFlow("")
     private val isAskingFlow = MutableStateFlow(false)
     private val globalGraphFlow = MutableStateFlow(com.daedalus.voicenotes.ui.mindmap.GlobalGraph(emptyList(), emptyList()))
-    private val bleStateFlow = MutableStateFlow(com.daedalus.voicenotes.ble.BleState())
 
     @Before
     fun setup() {
@@ -37,7 +34,11 @@ class AskHomeScreenTest {
         every { recordingViewModel.librarySources } returns MutableStateFlow(emptyList())
         every { recordingViewModel.exportIntent } returns MutableStateFlow(null)
         
-        every { deviceViewModel.bleManager.bleState } returns bleStateFlow
+        // Mock recording states
+        every { recordingViewModel.isRecording } returns MutableStateFlow(false)
+        every { recordingViewModel.isPaused } returns MutableStateFlow(false)
+        every { recordingViewModel.recordingDurationSeconds } returns MutableStateFlow(0L)
+        every { recordingViewModel.useBluetoothMic } returns MutableStateFlow(false)
     }
 
     @Test
@@ -46,7 +47,6 @@ class AskHomeScreenTest {
             DaedalusTheme {
                 AskHomeScreen(
                     recordingViewModel = recordingViewModel,
-                    deviceViewModel = deviceViewModel,
                     onNavigateToNote = {},
                     onNavigateToRecordings = {},
                     onNavigateToExpandedMap = {},
@@ -73,7 +73,6 @@ class AskHomeScreenTest {
             DaedalusTheme {
                 AskHomeScreen(
                     recordingViewModel = recordingViewModel,
-                    deviceViewModel = deviceViewModel,
                     onNavigateToNote = {},
                     onNavigateToRecordings = {},
                     onNavigateToExpandedMap = {},

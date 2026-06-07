@@ -1,6 +1,8 @@
 package com.daedalus.voicenotes.ui.screens
 
 import android.content.Context
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -24,14 +26,13 @@ import com.daedalus.voicenotes.ai.WHISPER_TOTAL_BYTES
 import com.daedalus.voicenotes.ai.WhisperDownloader
 import com.daedalus.voicenotes.ai.embeddingModelFile
 import com.daedalus.voicenotes.ai.isWhisperReady
-import com.daedalus.voicenotes.ui.components.DeviceStatusRow
-import com.daedalus.voicenotes.viewmodel.DeviceViewModel
+import com.daedalus.voicenotes.viewmodel.RecordingViewModel
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    deviceViewModel: DeviceViewModel,
+    recordingViewModel: RecordingViewModel,
     onBack: () -> Unit,
     onNavigateToPromptEditor: () -> Unit = {}
 ) {
@@ -40,7 +41,36 @@ fun SettingsScreen(
     val scope    = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
 
-    var autoProcess by remember { mutableStateOf(prefs.getBoolean("auto_process", false)) }
+    var autoProcess by remember { mutableStateOf(prefs.getBoolean("auto_process", true)) }
+
+    val useBluetoothMic by recordingViewModel.useBluetoothMic.collectAsState()
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        recordingViewModel.setUseBluetoothMic(isGranted)
+    }
+
+    val toggleBluetoothMic = {
+        if (useBluetoothMic) {
+            recordingViewModel.setUseBluetoothMic(false)
+        } else {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.BLUETOOTH_CONNECT
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                
+                if (hasPermission) {
+                    recordingViewModel.setUseBluetoothMic(true)
+                } else {
+                    permissionLauncher.launch(android.Manifest.permission.BLUETOOTH_CONNECT)
+                }
+            } else {
+                recordingViewModel.setUseBluetoothMic(true)
+            }
+        }
+    }
 
     val whisperDownloader = remember { WhisperDownloader(context) }
     val whisperState by whisperDownloader.state.collectAsState()
@@ -60,7 +90,7 @@ fun SettingsScreen(
     val embeddingState by embeddingDownloader.state.collectAsState()
     val embeddingReady = remember(embeddingState) { embeddingModelFile(context).exists() }
 
-    val bleState by deviceViewModel.bleManager.bleState.collectAsState()
+
 
     Scaffold(
         topBar = {
@@ -85,11 +115,7 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            DeviceStatusRow(
-                bleState = bleState,
-                onScan = { deviceViewModel.scan() },
-                onCancelScan = { deviceViewModel.disconnect() }
-            )
+
 
             Column(
                 modifier = Modifier
@@ -175,10 +201,21 @@ fun SettingsScreen(
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Auto-analyze on sync", style = MaterialTheme.typography.bodyMedium)
-                        Text("Analyze recordings automatically when synced via BLE", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Auto-analyze on stop", style = MaterialTheme.typography.bodyMedium)
+                        Text("Analyze recordings automatically when you stop recording", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Switch(checked = autoProcess, onCheckedChange = { autoProcess = it })
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Bluetooth mic compatibility", style = MaterialTheme.typography.bodyMedium)
+                        Text("Record audio from connected Bluetooth headsets/microphones", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(
+                        checked = useBluetoothMic,
+                        onCheckedChange = { toggleBluetoothMic() }
+                    )
                 }
 
                 Spacer(Modifier.height(8.dp))

@@ -2,13 +2,9 @@ package com.daedalus.voicenotes
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
-import com.daedalus.voicenotes.ble.BleManager
-import com.daedalus.voicenotes.ble.BleState
-import com.daedalus.voicenotes.ble.ConnectionState
 import com.daedalus.voicenotes.data.model.Recording
 import com.daedalus.voicenotes.ui.screens.RecordingsScreen
 import com.daedalus.voicenotes.ui.theme.DaedalusTheme
-import com.daedalus.voicenotes.viewmodel.DeviceViewModel
 import com.daedalus.voicenotes.viewmodel.RecordingViewModel
 import io.mockk.every
 import io.mockk.mockk
@@ -22,62 +18,17 @@ class RecordingsScreenTest {
     @get:Rule
     val composeTestRule = createComposeRule()
 
-    private val deviceViewModel = mockk<DeviceViewModel>(relaxed = true)
     private val recordingViewModel = mockk<RecordingViewModel>(relaxed = true)
-    private val bleManager = mockk<BleManager>(relaxed = true)
 
-    private val bleStateFlow = MutableStateFlow(BleState())
     private val filteredRecordingsFlow = MutableStateFlow<List<Recording>>(emptyList())
     private val searchQueryFlow = MutableStateFlow("")
     private val syncProgressFlow = MutableStateFlow<String?>(null)
 
     @Before
     fun setup() {
-        every { deviceViewModel.bleManager } returns bleManager
-        every { bleManager.bleState } returns bleStateFlow
         every { recordingViewModel.filteredRecordings } returns filteredRecordingsFlow
         every { recordingViewModel.searchQuery } returns searchQueryFlow
         every { recordingViewModel.syncProgress } returns syncProgressFlow
-    }
-
-    @Test
-    fun recordingsScreen_disconnected_showsNotConnectedBanner() {
-        bleStateFlow.value = BleState(connectionState = ConnectionState.DISCONNECTED)
-
-        composeTestRule.setContent {
-            DaedalusTheme {
-                RecordingsScreen(
-                    viewModel = deviceViewModel,
-                    recordingViewModel = recordingViewModel,
-                    onNavigateToNote = {},
-                    onBack = {}
-                )
-            }
-        }
-
-        composeTestRule.onNodeWithText("FW920 not connected").assertIsDisplayed()
-    }
-
-    @Test
-    fun recordingsScreen_connected_showsDeviceStatusRow() {
-        bleStateFlow.value = BleState(
-            connectionState = ConnectionState.CONNECTED,
-            batteryPct = 85
-        )
-
-        composeTestRule.setContent {
-            DaedalusTheme {
-                RecordingsScreen(
-                    viewModel = deviceViewModel,
-                    recordingViewModel = recordingViewModel,
-                    onNavigateToNote = {},
-                    onBack = {}
-                )
-            }
-        }
-
-        composeTestRule.onNodeWithText("FW920").assertIsDisplayed()
-        composeTestRule.onNodeWithText("85%").assertIsDisplayed()
     }
 
     @Test
@@ -92,7 +43,6 @@ class RecordingsScreenTest {
         composeTestRule.setContent {
             DaedalusTheme {
                 RecordingsScreen(
-                    viewModel = deviceViewModel,
                     recordingViewModel = recordingViewModel,
                     onNavigateToNote = {},
                     onBack = {}
@@ -113,7 +63,6 @@ class RecordingsScreenTest {
         composeTestRule.setContent {
             DaedalusTheme {
                 RecordingsScreen(
-                    viewModel = deviceViewModel,
                     recordingViewModel = recordingViewModel,
                     onNavigateToNote = {},
                     onBack = {}

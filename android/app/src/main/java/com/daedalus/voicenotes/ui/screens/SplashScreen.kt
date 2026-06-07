@@ -27,7 +27,7 @@ fun SplashScreen(onReady: (modelReady: Boolean) -> Unit) {
     val context = LocalContext.current
     LaunchedEffect(Unit) {
         delay(1500)
-        val ready = modelFile(context).exists()
+        val ready = com.daedalus.voicenotes.ai.areAllModelsReady(context)
         onReady(ready)
     }
 
@@ -48,7 +48,7 @@ fun SplashScreen(onReady: (modelReady: Boolean) -> Unit) {
                 tint = MaterialTheme.colorScheme.onPrimary
             )
             Text(
-                "Daedalus Voicenotes",
+                "Daedalus Echo",
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onPrimary

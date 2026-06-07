@@ -2,9 +2,6 @@ package com.daedalus.voicenotes
 
 import android.app.Application
 import android.util.Log
-import com.daedalus.voicenotes.ble.BleManager
-import com.daedalus.voicenotes.ble.BleState
-import com.daedalus.voicenotes.ble.ConnectionState
 import com.daedalus.voicenotes.data.RecordingRepository
 import com.daedalus.voicenotes.data.db.AppDatabase
 import com.daedalus.voicenotes.ai.EmbeddingService
@@ -15,7 +12,6 @@ import com.daedalus.voicenotes.viewmodel.RecordingViewModel
 import io.mockk.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.*
@@ -35,7 +31,6 @@ class RecordingViewModelTest {
 
     private val application = mockk<Application>(relaxed = true)
     private val repo = mockk<RecordingRepository>(relaxed = true)
-    private val bleManager = mockk<BleManager>(relaxed = true)
     private val embedder = mockk<EmbeddingService>(relaxed = true)
     private val llm = mockk<LocalLlmService>(relaxed = true)
     
@@ -52,11 +47,11 @@ class RecordingViewModelTest {
         every { Log.e(any(), any(), any()) } returns 0
         
         every { repo.allRecordings } returns flowOf(emptyList())
-        every { bleManager.bleState } returns MutableStateFlow(
-            BleState(connectionState = ConnectionState.CONNECTED)
-        )
         
-        // Mock all dependencies that would touch Android internals
+        val audioManager = mockk<android.media.AudioManager>(relaxed = true)
+        every { application.getSystemService(android.content.Context.AUDIO_SERVICE) } returns audioManager
+        every { application.contentResolver } returns mockk(relaxed = true)
+        
         val db = mockk<AppDatabase>(relaxed = true)
         val transcriber = mockk<TranscriptionService>(relaxed = true)
         
@@ -103,30 +98,17 @@ class RecordingViewModelTest {
         val filenames = listOf("file1.mp3", "file2.mp3")
         coEvery { repo.get("file1.mp3") } returns Recording("file1.mp3", durationMillis = 1000L)
         coEvery { repo.get("file2.mp3") } returns Recording("file2.mp3", durationMillis = 2000L)
-        coEvery { bleManager.deleteFile(any()) } returns true
 
-        viewModel.deleteMultipleRecordings(filenames, bleManager)
+        viewModel.deleteMultipleRecordings(filenames)
         
         // Advance time to allow coroutine to run
         advanceUntilIdle()
-
-        // Verify hardware delete called twice
-        coVerify(exactly = 1) { bleManager.deleteFile("file1.mp3") }
-        coVerify(exactly = 1) { bleManager.deleteFile("file2.mp3") }
         
         // Verify repo delete called twice
         coVerify(exactly = 2) { repo.delete(any()) }
         
         // Final progress should be null
         assertEquals(null, viewModel.syncProgress.value)
-    }
-
-    @Test
-    fun cancelSync_clearsSyncProgress() = runTest {
-        // cancelSync with no active job should not throw and should clear progress
-        viewModel.cancelSync()
-        advanceUntilIdle()
-        assertNull(viewModel.syncProgress.value)
     }
 
     @Test

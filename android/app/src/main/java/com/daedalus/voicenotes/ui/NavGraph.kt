@@ -16,13 +16,11 @@ import com.daedalus.voicenotes.ui.screens.PromptEditorScreen
 import com.daedalus.voicenotes.ui.screens.RecordingsScreen
 import com.daedalus.voicenotes.ui.screens.SettingsScreen
 import com.daedalus.voicenotes.ui.screens.SplashScreen
-import com.daedalus.voicenotes.viewmodel.DeviceViewModel
 import com.daedalus.voicenotes.viewmodel.RecordingViewModel
 
 @Composable
 fun NavGraph(
     navController: NavHostController,
-    deviceViewModel: DeviceViewModel,
     recordingViewModel: RecordingViewModel
 ) {
     NavHost(navController = navController, startDestination = "splash") {
@@ -48,7 +46,6 @@ fun NavGraph(
         composable("home") {
             AskHomeScreen(
                 recordingViewModel = recordingViewModel,
-                deviceViewModel = deviceViewModel,
                 onNavigateToNote = { filename -> navController.navigate("note/$filename") },
                 onNavigateToRecordings = { navController.navigate("recordings") },
                 onNavigateToExpandedMap = { navController.navigate("global_mind_map") },
@@ -58,7 +55,6 @@ fun NavGraph(
 
         composable("recordings") {
             RecordingsScreen(
-                viewModel = deviceViewModel,
                 recordingViewModel = recordingViewModel,
                 onNavigateToNote = { filename -> navController.navigate("note/$filename") },
                 onBack = { navController.popBackStack() }
@@ -69,7 +65,6 @@ fun NavGraph(
             val graph by recordingViewModel.globalGraph.collectAsState()
             GlobalMindMapScreen(
                 graph = graph,
-                deviceViewModel = deviceViewModel,
                 onNavigateToNote = { filename -> navController.navigate("note/$filename") },
                 onBack = { navController.popBackStack() }
             )
@@ -82,14 +77,13 @@ fun NavGraph(
             NoteDetailScreen(
                 filename = backStackEntry.arguments?.getString("filename") ?: "",
                 recordingViewModel = recordingViewModel,
-                bleManager = deviceViewModel.bleManager,
                 onBack = { navController.popBackStack() }
             )
         }
 
         composable("settings") {
             SettingsScreen(
-                deviceViewModel = deviceViewModel,
+                recordingViewModel = recordingViewModel,
                 onBack = { navController.popBackStack() },
                 onNavigateToPromptEditor = { navController.navigate("prompt_editor") }
             )
@@ -97,7 +91,6 @@ fun NavGraph(
 
         composable("prompt_editor") {
             PromptEditorScreen(
-                deviceViewModel = deviceViewModel,
                 onBack = { navController.popBackStack() }
             )
         }

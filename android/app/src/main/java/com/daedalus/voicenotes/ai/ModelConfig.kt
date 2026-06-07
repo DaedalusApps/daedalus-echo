@@ -58,4 +58,10 @@ fun isWhisperReady(context: Context): Boolean {
 fun modelFile(context: Context): File =
     File(modelsDir(context), GEMMA3_1B.filename)
 
+fun areAllModelsReady(context: Context): Boolean {
+    return modelFile(context).exists() &&
+           isWhisperReady(context) &&
+           embeddingModelFile(context).exists()
+}
+
 fun selectedModel(context: Context): LocalModel = GEMMA3_1B

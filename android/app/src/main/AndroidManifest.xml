@@ -2,13 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
 
-    <!-- Bluetooth -->
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
-        android:usesPermissionFlags="neverForLocation" />
+    <!-- Audio & Bluetooth -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <!-- USB OTG / Storage -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
@@ -18,15 +15,15 @@
     <!-- Network (Claude API) -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Foreground service for BLE -->
+    <!-- Foreground service for Recording -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
-    <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+    <uses-feature android:name="android.hardware.microphone" android:required="true" />
 
     <application
         android:name=".DaedalusApp"
-        android:label="Daedalus Voicenotes"
+        android:label="Daedalus Echo"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/Theme.DaedalusVoicenotes"

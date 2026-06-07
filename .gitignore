@@ -47,3 +47,10 @@ _verify_*.png
 android/*_PLAN.md
 *_PLAN.md
 
+# Dev scratch / session notes
+dev/
+
+# Python bytecode cache
+__pycache__/
+*.pyc
+

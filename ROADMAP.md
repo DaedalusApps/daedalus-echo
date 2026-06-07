@@ -11,6 +11,7 @@ This document tracks the future development of Daedalus Echo. Features are categ
 - [x] **Android Docs:** Created `android/BUILD.md` to document the Android build process and environment.
 - [x] **Security Audit:** Performed manual audit and cleaned up sensitive temporary files.
 - [x] **App Icon:** Updated to modern adaptive icon with branded microphone vector.
+- [x] **Store Readiness & Permission Cleanup:** Removed broad `MANAGE_EXTERNAL_STORAGE` and `READ_EXTERNAL_STORAGE` permissions, migrating exports to `cacheDir` via secure `FileProvider` sharing.
 
 ## 🚀 Active Development (Phase 2: Android)
 

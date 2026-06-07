@@ -77,7 +77,7 @@ adb shell am broadcast -a com.daedalus.echo.STOP_RECORDING -n com.daedalus.echo/
 # Trigger analysis for a specific file:
 adb shell am broadcast -a com.daedalus.echo.ANALYZE --es filename "20260524213434.mp3" -n com.daedalus.echo/.AdbReceiver
 ```
-`AdbReceiver` (exported manifest receiver) re-broadcasts to same package UID, bypassing `RECEIVER_NOT_EXPORTED` on MainActivity's dynamic receiver.
+`AdbReceiver` (non-exported manifest receiver) re-broadcasts to same package UID, bypassing `RECEIVER_NOT_EXPORTED` on MainActivity's dynamic receiver.
 
 ### 3. File System & Storage
 - **BLE-First:** Audio files are downloaded via BLE (cmd=0x0B) into `getExternalFilesDir(null)/Recordings/`. USB OTG path is legacy/fallback only.

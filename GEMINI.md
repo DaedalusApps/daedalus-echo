@@ -3,9 +3,7 @@
 This file provides foundational mandates, architecture, and workflows for the `daedalus-echo` project. It takes precedence over general defaults.
 
 ## Project Overview
-`daedalus-echo` is a companion application for the **ELVANZA FW920** (HUXGO OEM) AI voice recorder. The project is split into two phases:
-1. **Phase 1 (Current):** A Python CLI prototype for BLE control, transcription (Whisper), and Claude-based analysis.
-2. **Phase 2 (Active):** An Android app (Kotlin/Compose) for on-device inference and mobile-first experience.
+`daedalus-echo` contains a legacy Python CLI prototype (Phase 1) for the **ELVANZA FW920** AI voice recorder, and a **standalone Android app** (Phase 2) for local on-device voice recording, Whisper transcription, and Gemma 3 AI summaries.
 
 ## Tech Stack
 
@@ -80,12 +78,12 @@ adb shell am broadcast -a com.daedalus.echo.ANALYZE --es filename "2026052421343
 `AdbReceiver` (non-exported manifest receiver) re-broadcasts to same package UID, bypassing `RECEIVER_NOT_EXPORTED` on MainActivity's dynamic receiver.
 
 ### 3. File System & Storage
-- **BLE-First:** Audio files are downloaded via BLE (cmd=0x0B) into `getExternalFilesDir(null)/Recordings/`. USB OTG path is legacy/fallback only.
-- **Android SAF:** On Android, use Storage Access Framework (SAF) for USB OTG access if needed.
+- **On-Device Recording first:** Audio files are recorded directly via device microphone and saved to `getExternalFilesDir(null)/Recordings/`.
+- **Import Support:** Audio files can be imported from local storage or USB OTG via Storage Access Framework (SAF) using `syncFiles(uris)`.
 
 ## Architecture
 
-### Python Structure
+## Python Structure
 - `src/cli.py`: Main entry point.
 - `src/ai/`: Wrappers for Whisper and Claude.
 - `src/ble/`: BLE communication logic.
@@ -96,7 +94,8 @@ adb shell am broadcast -a com.daedalus.echo.ANALYZE --es filename "2026052421343
 ### Android Structure
 - `android/app/src/main/java/com/daedalus/echo/`:
     - `ai/`: Local LLM (Gemma 3) and Transcription (Whisper) services.
-    - `ble/`: Bluetooth management and FW920 protocol.
+    - `recording/`: AudioRecorder for built-in and Bluetooth microphone recording.
+    - `data/`: Room Database configurations and RecordingRepository.
     - `ui/`: Compose screens and components.
     - `viewmodel/`: State management for UI.
 

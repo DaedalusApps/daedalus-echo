@@ -28,12 +28,12 @@ This file provides guidance for working with the Android project in the `android
 - **Tech Stack**: Jetpack Compose, Room (with Kapt), MediaPipe GenAI (Gemma), Media3 ExoPlayer.
 - **Packages**:
     - `com.daedalus.echo.ai`: Local LLM (MediaPipe) and model downloading logic.
-    - `com.daedalus.echo.ble`: Bluetooth management for the FW920 recorder.
+    - `com.daedalus.echo.recording`: Audio recording management (built-in and Bluetooth SCO microphone).
     - `com.daedalus.echo.data`: Room database for recordings and metadata.
     - `com.daedalus.echo.ui`: Compose-based screens and theme.
     - `com.daedalus.echo.viewmodel`: State management using ViewModels and StateFlow.
 
 ## Key Design Decisions
 - **On-Device AI**: Uses MediaPipe LLM Inference with the Gemma 3 1B model in `.task` format. Models are downloaded on first launch or via Settings.
-- **BLE Communication**: Handles the proprietary DOWAY protocol for the FW920 device (Recording start/stop, status).
-- **USB OTG**: Accesses audio files via Storage Access Framework (SAF) when the recorder is connected as a mass storage device.
+- **Microphone Recording**: Supports high-quality audio recording via built-in device microphone or a connected Bluetooth headset microphone (using Bluetooth SCO).
+- **Local Import**: Allows importing existing audio recordings from local storage or external USB OTG drives using the Storage Access Framework (SAF).

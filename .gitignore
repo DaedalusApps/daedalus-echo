@@ -1,18 +1,13 @@
 .env
 token.json
 credentials.json
-__pycache__/
-*.py[cod]
-*.egg-info/
-dist/
-build/
-.venv/
-venv/
+
+# Audio & Export files
 *.wav
 *.mp3
 echo-exports/
 
-# Android
+# Android Build & IDE
 android/.gradle/
 android/.kotlin/
 android/app/build/
@@ -21,19 +16,9 @@ android/local.properties
 android/*.jks
 android/*.keystore
 android/keystore.properties
-# sherpa-onnx .aar is downloaded at build time (downloadSherpaOnnx task), not committed
 android/app/libs/*.aar
 .idea/
 *.iml
-
-# Reverse-engineering artifacts: keep scripts and analysis JSON, ignore binaries
-reverse/*.xapk
-reverse/*.apk
-reverse/xapk_contents/
-reverse/arm_native/
-reverse/libapp_strings.txt
-reverse/*.log
-dev/
 
 # Databases & WAL files (user data — never commit)
 *.db

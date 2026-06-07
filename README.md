@@ -73,14 +73,6 @@ Beyond per-recording analysis, **Ask Your Notes** embeds every transcript on-dev
 | Database | Room 2.6.1 + SQLite WAL |
 | Build | AGP 8.7.3 · Kotlin 2.0.21 · JDK 21 |
 
-## Project Structure
-
-```
-android/     Kotlin/Compose Android app (primary product)
-src/         Python CLI prototype — BLE exploration & desktop processing (Phase 1)
-reverse/     FW920 protocol reverse-engineering notes and tools (reference only)
-```
-
 ## Building
 
 Requires Android SDK 35 and JDK 21.
@@ -91,12 +83,10 @@ cd android
 .\gradlew assembleRelease  # release APK (ADB debug hooks disabled)
 ```
 
+> [!NOTE]
 > The first build downloads the prebuilt `sherpa-onnx` Android library (~56 MB) from GitHub Releases into `app/libs/` automatically (the `downloadSherpaOnnx` Gradle task), so an internet connection is required for the initial build.
-
-## Notes
-
-- The Python CLI in `src/` and the protocol notes in `reverse/` are legacy artifacts from Phase 1 BLE exploration of the FW920 recorder. The Android application has been fully repurposed as a standalone local voice recorder and AI assistant.
-- ADB broadcast commands (`ANALYZE`, `SYNC`, etc.) are only active in debug builds and disabled in release.
+> 
+> ADB broadcast commands (`ANALYZE`, `SYNC`, etc.) are only active in debug builds and are disabled in release builds.
 
 ## License
 

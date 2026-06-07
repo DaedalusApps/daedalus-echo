@@ -1,4 +1,4 @@
-# Plan: Voicenotes — ELVANZA/FW920T AI Voice Recorder Companion App
+# Plan: Daedalus Echo — ELVANZA/FW920T AI Voice Recorder Companion App
 
 ## Context
 
@@ -145,7 +145,7 @@ Each category selects a domain-specific prompt for summarization.
 
 ### Prototype Project Structure
 ```
-voicenotes/
+daedalus-echo/
 ├── scripts/
 │   └── ble_discover.py           # Step 1: GATT scanner, run first
 ├── src/
@@ -235,7 +235,7 @@ Port the validated Python prototype to a Kotlin Android app with on-device AI.
 
 ### Android Project Structure (mirrors prototype)
 ```
-app/src/main/java/com/voicenotes/
+app/src/main/java/com/daedalus/echo/
 ├── bluetooth/            # BleScanner, BleConnectionManager, Protocol, DeviceStateManager
 ├── storage/              # UsbDriveAccessor (SAF)
 ├── ai/                   # GemmaEngine, WhisperEngine, all *Service.kt
@@ -249,7 +249,7 @@ app/src/main/java/com/voicenotes/
 ## Installation (Prototype)
 
 ```bash
-cd voicenotes
+cd daedalus-echo
 pip install anthropic bleak pydub python-docx fpdf2 rich python-dotenv \
             google-api-python-client google-auth-oauthlib openai-whisper
 sudo apt install ffmpeg      # for pydub MP3→WAV conversion

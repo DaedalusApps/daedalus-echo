@@ -1,7 +1,7 @@
 # FW920 Wi-Fi OTA Discovery — Session Handoff
 
 **Last updated**: 2026-05-23  
-**Goal**: Trigger FW920 into OTA mode via BLE, capture the Wi-Fi hotspot SSID, then implement Wi-Fi file transfer in Daedalus Voicenotes (~10 MB/s vs BLE's ~10 KB/s).
+**Goal**: Trigger FW920 into OTA mode via BLE, capture the Wi-Fi hotspot SSID, then implement Wi-Fi file transfer in Daedalus Echo (~10 MB/s vs BLE's ~10 KB/s).
 
 ---
 
@@ -183,7 +183,7 @@ Only `0x1A` responded with `[00]`. All others timed out or got no response.
 
 ---
 
-## Daedalus Voicenotes App Status
+## Daedalus Echo App Status
 
 **Branch**: `main`  
 **Last commit**: `5004c60 ux: remove BLE per-file sync button from recordings list`
@@ -221,13 +221,13 @@ adb devices
 adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 
 # Trigger sync (USB OTG)
-adb shell am broadcast -a com.daedalus.voicenotes.SYNC -p com.daedalus.voicenotes
+adb shell am broadcast -a com.daedalus.echo.SYNC -p com.daedalus.echo
 
 # Trigger BLE probe (logs all GATT services + probes CMD bytes)
-adb shell am broadcast -a com.daedalus.voicenotes.PROBE -p com.daedalus.voicenotes
+adb shell am broadcast -a com.daedalus.echo.PROBE -p com.daedalus.echo
 
 # Trigger BLE service probe (FFD0/C0C0/E49A)
-adb shell am broadcast -a com.daedalus.voicenotes.PROBE2 -p com.daedalus.voicenotes
+adb shell am broadcast -a com.daedalus.echo.PROBE2 -p com.daedalus.echo
 
 # Watch relevant logs
 adb logcat -s DaedalusBLE DaedalusSync DaedalusAI DaedalusADB FW920_PROBE R2.a
@@ -246,8 +246,8 @@ cd android && ./gradlew assembleDebug
 | `reverse/libapp_strings.txt` | String dump of `libapp.so` — all OTA/Wi-Fi strings are here |
 | `reverse/analyze_doway.py` | Script used to extract strings/UUIDs from APK |
 | `reverse/intercept_proxy.py` | MITM proxy for firmware upgrade API (see MITM section above) |
-| `android/app/src/main/java/com/daedalus/voicenotes/ble/BleManager.kt` | BLE protocol impl + probe methods |
-| `android/app/src/main/java/com/daedalus/voicenotes/ble/FW920Protocol.kt` | Packet parsing (CMD 0x05 layout) |
+| `android/app/src/main/java/com/daedalus/echo/ble/BleManager.kt` | BLE protocol impl + probe methods |
+| `android/app/src/main/java/com/daedalus/echo/ble/FW920Protocol.kt` | Packet parsing (CMD 0x05 layout) |
 
 ---
 

@@ -31,8 +31,8 @@ def main():
     run_cmd("adb logcat -c")
     
     # Trigger Sync
-    print("   -> Triggering com.daedalus.voicenotes.SYNC broadcast...")
-    out, err, code = run_cmd("adb shell am broadcast -a com.daedalus.voicenotes.SYNC")
+    print("   -> Triggering com.daedalus.echo.SYNC broadcast...")
+    out, err, code = run_cmd("adb shell am broadcast -a com.daedalus.echo.SYNC")
     
     if "Broadcast completed" not in out:
         print("❌ FAILED: Could not trigger sync broadcast. Is the app installed and running?")

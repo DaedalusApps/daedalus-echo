@@ -1,6 +1,6 @@
 # Roadmap & Feature Backlog
 
-This document tracks the future development of Daedalus Voicenotes. Features are categorized by phase and priority.
+This document tracks the future development of Daedalus Echo. Features are categorized by phase and priority.
 
 ## 🚧 Missing Features (by design — deferred)
 - [ ] **Audio Playback:** ExoPlayer is included in dependencies, but the recordings screen does not yet have a functional player.

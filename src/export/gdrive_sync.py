@@ -51,7 +51,7 @@ def _find_or_create_folder(service, name: str) -> str:
 
 def upload_file(
     local_path: Path,
-    folder_name: str = "Voicenotes",
+    folder_name: str = "Daedalus Echo",
     *,
     credentials_file: str | None = None,
     token_file: str | None = None,

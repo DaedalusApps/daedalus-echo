@@ -14,5 +14,5 @@ dependencyResolutionManagement {
         maven { url = uri("https://jitpack.io") }
     }
 }
-rootProject.name = "DaedalusVoicenotes"
+rootProject.name = "DaedalusEcho"
 include(":app")

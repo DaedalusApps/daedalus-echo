@@ -1,4 +1,4 @@
-"""Voicenotes CLI — ELVANZA FW920 voice recorder companion."""
+"""Daedalus Echo CLI — ELVANZA FW920 voice recorder companion."""
 import asyncio
 import json
 import os
@@ -29,7 +29,7 @@ console = Console()
 # ---------------------------------------------------------------------------
 
 def _export_dir() -> Path:
-    d = Path(os.environ.get("EXPORT_DIR", Path.home() / "voicenotes-exports")).expanduser()
+    d = Path(os.environ.get("EXPORT_DIR", Path.home() / "echo-exports")).expanduser()
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -346,7 +346,7 @@ COMMANDS = {
 
 def print_help() -> None:
     console.print(Panel(
-        "[bold]Voicenotes[/bold] — ELVANZA FW920 AI Voice Recorder Companion\n",
+        "[bold]Daedalus Echo[/bold] — ELVANZA FW920 AI Voice Recorder Companion\n",
         subtitle="python src/cli.py <command> [args]",
     ))
     table = Table(show_header=False, box=None, padding=(0, 2))

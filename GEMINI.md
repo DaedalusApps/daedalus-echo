@@ -1,9 +1,9 @@
-# GEMINI.md - Voicenotes Project Guidance
+# GEMINI.md - Daedalus Echo Project Guidance
 
-This file provides foundational mandates, architecture, and workflows for the `voicenotes` project. It takes precedence over general defaults.
+This file provides foundational mandates, architecture, and workflows for the `daedalus-echo` project. It takes precedence over general defaults.
 
 ## Project Overview
-`voicenotes` is a companion application for the **ELVANZA FW920** (HUXGO OEM) AI voice recorder. The project is split into two phases:
+`daedalus-echo` is a companion application for the **ELVANZA FW920** (HUXGO OEM) AI voice recorder. The project is split into two phases:
 1. **Phase 1 (Current):** A Python CLI prototype for BLE control, transcription (Whisper), and Claude-based analysis.
 2. **Phase 2 (Active):** An Android app (Kotlin/Compose) for on-device inference and mobile-first experience.
 
@@ -70,12 +70,12 @@ This file provides foundational mandates, architecture, and workflows for the `v
 **ADB test automation:**
 ```powershell
 # Trigger sync:
-adb shell am broadcast -a com.daedalus.voicenotes.SYNC -n com.daedalus.voicenotes/.AdbReceiver
+adb shell am broadcast -a com.daedalus.echo.SYNC -n com.daedalus.echo/.AdbReceiver
 # Start/stop recording:
-adb shell am broadcast -a com.daedalus.voicenotes.START_RECORDING -n com.daedalus.voicenotes/.AdbReceiver
-adb shell am broadcast -a com.daedalus.voicenotes.STOP_RECORDING -n com.daedalus.voicenotes/.AdbReceiver
+adb shell am broadcast -a com.daedalus.echo.START_RECORDING -n com.daedalus.echo/.AdbReceiver
+adb shell am broadcast -a com.daedalus.echo.STOP_RECORDING -n com.daedalus.echo/.AdbReceiver
 # Trigger analysis for a specific file:
-adb shell am broadcast -a com.daedalus.voicenotes.ANALYZE --es filename "20260524213434.mp3" -n com.daedalus.voicenotes/.AdbReceiver
+adb shell am broadcast -a com.daedalus.echo.ANALYZE --es filename "20260524213434.mp3" -n com.daedalus.echo/.AdbReceiver
 ```
 `AdbReceiver` (exported manifest receiver) re-broadcasts to same package UID, bypassing `RECEIVER_NOT_EXPORTED` on MainActivity's dynamic receiver.
 
@@ -94,7 +94,7 @@ adb shell am broadcast -a com.daedalus.voicenotes.ANALYZE --es filename "2026052
 - `src/categories.py`: Source of truth for 15 recording categories and their prompts.
 
 ### Android Structure
-- `android/app/src/main/java/com/daedalus/voicenotes/`:
+- `android/app/src/main/java/com/daedalus/echo/`:
     - `ai/`: Local LLM (Gemma 3) and Transcription (Whisper) services.
     - `ble/`: Bluetooth management and FW920 protocol.
     - `ui/`: Compose screens and components.

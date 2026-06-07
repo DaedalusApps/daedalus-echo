@@ -7,10 +7,7 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
-    <!-- USB OTG / Storage -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
 
     <!-- Network (Claude API) -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -26,7 +23,7 @@
         android:label="Daedalus Echo"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:theme="@style/Theme.DaedalusVoicenotes"
+        android:theme="@style/Theme.DaedalusEcho"
         android:allowBackup="true"
         android:supportsRtl="true">
 
@@ -44,11 +41,11 @@
             android:name=".AdbReceiver"
             android:exported="false">
             <intent-filter>
-                <action android:name="com.daedalus.voicenotes.SYNC" />
-                <action android:name="com.daedalus.voicenotes.PROBE" />
-                <action android:name="com.daedalus.voicenotes.PROBE2" />
-                <action android:name="com.daedalus.voicenotes.PROBE_DELETE" />
-                <action android:name="com.daedalus.voicenotes.ANALYZE" />
+                <action android:name="com.daedalus.echo.SYNC" />
+                <action android:name="com.daedalus.echo.PROBE" />
+                <action android:name="com.daedalus.echo.PROBE2" />
+                <action android:name="com.daedalus.echo.PROBE_DELETE" />
+                <action android:name="com.daedalus.echo.ANALYZE" />
             </intent-filter>
         </receiver>
 

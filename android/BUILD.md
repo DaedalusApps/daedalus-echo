@@ -27,11 +27,11 @@ This file provides guidance for working with the Android project in the `android
 ## Architecture
 - **Tech Stack**: Jetpack Compose, Room (with Kapt), MediaPipe GenAI (Gemma), Media3 ExoPlayer.
 - **Packages**:
-    - `com.daedalus.voicenotes.ai`: Local LLM (MediaPipe) and model downloading logic.
-    - `com.daedalus.voicenotes.ble`: Bluetooth management for the FW920 recorder.
-    - `com.daedalus.voicenotes.data`: Room database for recordings and metadata.
-    - `com.daedalus.voicenotes.ui`: Compose-based screens and theme.
-    - `com.daedalus.voicenotes.viewmodel`: State management using ViewModels and StateFlow.
+    - `com.daedalus.echo.ai`: Local LLM (MediaPipe) and model downloading logic.
+    - `com.daedalus.echo.ble`: Bluetooth management for the FW920 recorder.
+    - `com.daedalus.echo.data`: Room database for recordings and metadata.
+    - `com.daedalus.echo.ui`: Compose-based screens and theme.
+    - `com.daedalus.echo.viewmodel`: State management using ViewModels and StateFlow.
 
 ## Key Design Decisions
 - **On-Device AI**: Uses MediaPipe LLM Inference with the Gemma 3 1B model in `.task` format. Models are downloaded on first launch or via Settings.

@@ -10,7 +10,7 @@ build/
 venv/
 *.wav
 *.mp3
-voicenotes-exports/
+echo-exports/
 
 # Android
 android/.gradle/

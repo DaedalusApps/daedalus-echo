@@ -31,11 +31,11 @@ val vName = versionProps.getProperty("VERSION_NAME", "1.0.0")
 val sherpaOnnxVersion = "1.13.2"
 
 android {
-    namespace   = "com.daedalus.voicenotes"
+    namespace   = "com.daedalus.echo"
     compileSdk  = 35
 
     defaultConfig {
-        applicationId   = "com.daedalus.voicenotes"
+        applicationId   = "com.daedalus.echo"
         minSdk          = 26
         targetSdk       = 35
         versionCode     = gitCommitCount

@@ -1,4 +1,4 @@
-"""Notetaker CLI — ELVANZA FW920 voice recorder companion."""
+"""Voicenotes CLI — ELVANZA FW920 voice recorder companion."""
 import asyncio
 import json
 import os
@@ -346,7 +346,7 @@ COMMANDS = {
 
 def print_help() -> None:
     console.print(Panel(
-        "[bold]Notetaker[/bold] — ELVANZA FW920 AI Voice Recorder Companion\n",
+        "[bold]Voicenotes[/bold] — ELVANZA FW920 AI Voice Recorder Companion\n",
         subtitle="python src/cli.py <command> [args]",
     ))
     table = Table(show_header=False, box=None, padding=(0, 2))

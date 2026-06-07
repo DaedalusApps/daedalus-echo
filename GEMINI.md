@@ -1,9 +1,9 @@
-# GEMINI.md - Notetaker Project Guidance
+# GEMINI.md - Voicenotes Project Guidance
 
-This file provides foundational mandates, architecture, and workflows for the `notetaker` project. It takes precedence over general defaults.
+This file provides foundational mandates, architecture, and workflows for the `voicenotes` project. It takes precedence over general defaults.
 
 ## Project Overview
-`notetaker` is a companion application for the **ELVANZA FW920** (HUXGO OEM) AI voice recorder. The project is split into two phases:
+`voicenotes` is a companion application for the **ELVANZA FW920** (HUXGO OEM) AI voice recorder. The project is split into two phases:
 1. **Phase 1 (Current):** A Python CLI prototype for BLE control, transcription (Whisper), and Claude-based analysis.
 2. **Phase 2 (Active):** An Android app (Kotlin/Compose) for on-device inference and mobile-first experience.
 

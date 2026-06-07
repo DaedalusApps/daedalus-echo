@@ -18,6 +18,9 @@ android/.kotlin/
 android/app/build/
 android/build/
 android/local.properties
+android/*.jks
+android/*.keystore
+android/keystore.properties
 # sherpa-onnx .aar is downloaded at build time (downloadSherpaOnnx task), not committed
 android/app/libs/*.aar
 .idea/

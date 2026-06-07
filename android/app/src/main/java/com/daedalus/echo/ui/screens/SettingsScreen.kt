@@ -1,6 +1,8 @@
 package com.daedalus.echo.ui.screens
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -216,6 +218,52 @@ fun SettingsScreen(
                         checked = useBluetoothMic,
                         onCheckedChange = { toggleBluetoothMic() }
                     )
+                }
+
+                // Privacy & Support
+                Text("Privacy & Support", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "🔒 100% Private & Local-First",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "Daedalus Echo runs entirely on your device. Your voice recordings, transcripts, and AI summaries are processed locally and never leave your phone. No analytics, tracking, or cloud uploads.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
+                        Text(
+                            text = "Support Open Source",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "This application is free and open-source. If you find it valuable, consider sponsoring development to support privacy-first AI tools.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Button(
+                            onClick = {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/DaedalusApps/daedalus-echo"))
+                                context.startActivity(intent)
+                            },
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                        ) {
+                            Text("Sponsor Project")
+                        }
+                    }
                 }
 
                 Spacer(Modifier.height(8.dp))

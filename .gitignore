@@ -1,0 +1,61 @@
+.env
+token.json
+credentials.json
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.wav
+*.mp3
+notetaker-exports/
+
+# Android
+android/.gradle/
+android/.kotlin/
+android/app/build/
+android/build/
+android/local.properties
+# sherpa-onnx .aar is downloaded at build time (downloadSherpaOnnx task), not committed
+android/app/libs/*.aar
+.idea/
+*.iml
+
+# Reverse-engineering artifacts: keep scripts and analysis JSON, ignore binaries
+reverse/*.xapk
+reverse/*.apk
+reverse/xapk_contents/
+reverse/arm_native/
+reverse/libapp_strings.txt
+reverse/*.log
+dev/
+
+# Databases & WAL files (user data — never commit)
+*.db
+*.db-wal
+*.db-shm
+*_b64.txt
+
+# Build & log artifacts
+build.log
+*.log
+
+# Android device state dumps (generated during development/testing)
+android/backup.ab
+ui*.xml
+state*.xml
+list*.xml
+selection.xml
+post_delete.xml
+sync_result.xml
+window*.xml
+window_dump.xml
+screen_*.png
+_verify_*.png
+
+# Internal development plan files
+android/*_PLAN.md
+*_PLAN.md
+

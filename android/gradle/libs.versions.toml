@@ -1,0 +1,61 @@
+[versions]
+agp = "8.7.3"
+kotlin = "2.0.21"
+compose-bom = "2024.12.01"
+lifecycle = "2.8.7"
+navigation = "2.8.5"
+room = "2.6.1"
+okhttp = "4.12.0"
+media3 = "1.5.1"
+coroutines = "1.9.0"
+activity-compose = "1.9.3"
+core-ktx = "1.15.0"
+appcompat = "1.7.0"
+mediapipe-genai = "0.10.35"
+documentfile = "1.0.1"
+junit4       = "4.13.2"
+mockk        = "1.13.10"
+coroutines-test = "1.9.0"
+androidx-test-ext = "1.1.5"
+androidx-test-runner = "1.5.2"
+arch-core = "2.2.0"
+
+[libraries]
+androidx-arch-core-testing = { group = "androidx.arch.core", name = "core-testing", version.ref = "arch-core" }
+compose-bom           = { group = "androidx.compose", name = "compose-bom",            version.ref = "compose-bom" }
+compose-ui            = { group = "androidx.compose.ui", name = "ui" }
+compose-ui-tooling    = { group = "androidx.compose.ui", name = "ui-tooling" }
+compose-ui-preview    = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
+compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
+compose-material3     = { group = "androidx.compose.material3", name = "material3" }
+compose-icons-ext     = { group = "androidx.compose.material", name = "material-icons-extended" }
+activity-compose      = { group = "androidx.activity", name = "activity-compose",       version.ref = "activity-compose" }
+lifecycle-viewmodel   = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+lifecycle-runtime     = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
+navigation-compose    = { group = "androidx.navigation", name = "navigation-compose",   version.ref = "navigation" }
+room-runtime          = { group = "androidx.room", name = "room-runtime",              version.ref = "room" }
+room-ktx              = { group = "androidx.room", name = "room-ktx",                 version.ref = "room" }
+room-compiler         = { group = "androidx.room", name = "room-compiler",            version.ref = "room" }
+okhttp                = { group = "com.squareup.okhttp3", name = "okhttp",             version.ref = "okhttp" }
+media3-exoplayer      = { group = "androidx.media3", name = "media3-exoplayer",        version.ref = "media3" }
+media3-ui             = { group = "androidx.media3", name = "media3-ui",              version.ref = "media3" }
+coroutines-android    = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+core-ktx              = { group = "androidx.core", name = "core-ktx",                  version.ref = "core-ktx" }
+appcompat             = { group = "androidx.appcompat", name = "appcompat",            version.ref = "appcompat" }
+mediapipe-genai       = { group = "com.google.mediapipe", name = "tasks-genai",        version.ref = "mediapipe-genai" }
+mediapipe-tasks-text  = { group = "com.google.mediapipe", name = "tasks-text",         version.ref = "mediapipe-genai" }
+documentfile          = { group = "androidx.documentfile", name = "documentfile",        version.ref = "documentfile" }
+junit4                = { group = "junit", name = "junit",                                version.ref = "junit4" }
+mockk                 = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
+mockk-android         = { group = "io.mockk", name = "mockk-android", version.ref = "mockk" }
+coroutines-test       = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
+room-testing          = { group = "androidx.room", name = "room-testing",                version.ref = "room" }
+androidx-test-ext     = { group = "androidx.test.ext", name = "junit",                  version.ref = "androidx-test-ext" }
+androidx-test-runner  = { group = "androidx.test", name = "runner",                     version.ref = "androidx-test-runner" }
+
+[plugins]
+android-application   = { id = "com.android.application", version.ref = "agp" }
+kotlin-android        = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose        = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-kapt           = { id = "org.jetbrains.kotlin.kapt", version.ref = "kotlin" }

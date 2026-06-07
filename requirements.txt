@@ -1,0 +1,10 @@
+bleak>=0.22.0
+pydub>=0.25.1
+python-docx>=1.1.2
+fpdf2>=2.8.1
+rich>=13.9.0
+python-dotenv>=1.0.1
+google-api-python-client>=2.154.0
+google-auth-oauthlib>=1.2.1
+google-auth-httplib2>=0.2.0
+openai-whisper>=20240930

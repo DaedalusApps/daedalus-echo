@@ -1,0 +1,5 @@
+#!/bin/sh
+JAVA_HOME="$HOME/jdk21"
+GRADLE_HOME="$HOME/gradle_dist/gradle-8.11.1"
+export JAVA_HOME GRADLE_HOME
+exec "$GRADLE_HOME/bin/gradle" "$@"

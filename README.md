@@ -22,7 +22,24 @@ A standalone Android voice recorder, transcription, and AI analysis application.
 | **GPU** | Vulkan 1.1+ support recommended for GPU acceleration of Gemma 3 |
 | **Storage** | ~770 MB free (Gemma 3 1B: ~555 MB · Whisper base.en: ~160 MB · text embedder: ~26 MB) |
 
-Tested on Samsung Galaxy S24 Ultra.
+### Device Compatibility
+
+Since all processing is local, the app requires a modern processor and adequate memory. Generally, **any mid-range or flagship Android device released in 2019 or later** running Android 10+ with at least 4 GB of RAM is compatible.
+
+Popular compatible device series include:
+*   **Google Pixel**: Pixel 3/3 XL/3a (minimum), Pixel 4 and newer (recommended).
+*   **Samsung Galaxy**:
+    *   *S Series*: S9, S10, S20, S21, S22, S23, S24, S25 and newer.
+    *   *Note Series*: Note 9, Note 10, Note 20 series.
+    *   *A Series (Mid-range)*: A51, A52, A53, A54, A55, A71, A72, A73 and newer (6GB/8GB RAM models recommended).
+    *   *Z Fold/Flip*: All models.
+*   **OnePlus**: OnePlus 6T, 7, 8, 9, 10, 11, 12, 13 and newer.
+*   **Xiaomi / Redmi / POCO**:
+    *   *Xiaomi*: Mi 9, 10, 11, 12, 13, 14, 15 and newer.
+    *   *Redmi Note*: Note 8 Pro, 9 Pro, 10 Pro, 11 Pro, 12 Pro, 13 Pro and newer.
+    *   *POCO*: F3, F4, F5, F6, X3 Pro, X4 Pro, X5 Pro, X6 Pro.
+
+*Tested and verified on Samsung Galaxy S24 Ultra (Android 16, 12 GB RAM).*
 
 ## Setup
 

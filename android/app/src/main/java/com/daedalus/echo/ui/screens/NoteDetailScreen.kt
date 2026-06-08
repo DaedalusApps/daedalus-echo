@@ -44,6 +44,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -60,7 +61,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.Slider
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import android.net.Uri
 import android.util.Log
@@ -68,6 +71,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import java.io.File
+import kotlinx.coroutines.delay
 import com.daedalus.echo.ui.mindmap.MindMapCanvas
 import com.daedalus.echo.viewmodel.RecordingViewModel
 
@@ -99,10 +103,32 @@ fun NoteDetailScreen(
     // Player setup
     val player = remember { ExoPlayer.Builder(context).build() }
     var isPlaying by remember { mutableStateOf(false) }
+    var playbackPosition by remember { mutableLongStateOf(0L) }
+    var playbackDuration by remember { mutableLongStateOf(0L) }
 
-    DisposableEffect(Unit) {
+    // Sync isPlaying when audio finishes naturally
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED || playbackState == Player.STATE_IDLE) {
+                    isPlaying = false
+                    playbackPosition = 0L
+                }
+            }
+        }
+        player.addListener(listener)
         onDispose {
+            player.removeListener(listener)
             player.release()
+        }
+    }
+
+    // Poll position while playing
+    LaunchedEffect(isPlaying) {
+        while (isPlaying) {
+            playbackPosition = player.currentPosition.coerceAtLeast(0L)
+            playbackDuration = player.duration.takeIf { it > 0L } ?: (note?.durationMillis ?: 0L)
+            delay(200)
         }
     }
 
@@ -189,24 +215,58 @@ fun NoteDetailScreen(
                 if (isProcessing) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
+                // Playback progress bar
+                val totalDuration = playbackDuration.takeIf { it > 0L } ?: (note?.durationMillis ?: 0L)
+                if (totalDuration > 0L) {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                        Slider(
+                            value = if (totalDuration > 0L) playbackPosition.toFloat() / totalDuration.toFloat() else 0f,
+                            onValueChange = { fraction ->
+                                val seekTo = (fraction * totalDuration).toLong()
+                                player.seekTo(seekTo)
+                                playbackPosition = seekTo
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = formatDuration(playbackPosition),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = formatDuration(totalDuration),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Play Button
+                    // Play / Stop Button
                     Button(
                         onClick = {
                             if (isPlaying) {
                                 player.stop()
                                 isPlaying = false
+                                playbackPosition = 0L
                             } else {
-                                val file = note?.localPath?.let { File(it) } ?: File(context.getExternalFilesDir(null), "Recordings/$filename")
+                                val file = note?.localPath?.let { File(it) }
+                                    ?: File(context.getExternalFilesDir(null), "Recordings/$filename")
                                 if (file.exists()) {
                                     player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
                                     player.prepare()
                                     player.play()
+                                    playbackDuration = note?.durationMillis ?: 0L
                                     isPlaying = true
                                 } else {
                                     Log.e("Playback", "File not found: ${file.absolutePath}")
@@ -215,8 +275,11 @@ fun NoteDetailScreen(
                         },
                         modifier = Modifier.weight(1f)
                     ) {
-                        Icon(if (isPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
-                            contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(
+                            if (isPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
                         Spacer(Modifier.width(4.dp))
                         Text(if (isPlaying) "Stop" else "Play", maxLines = 1)
                     }
@@ -455,6 +518,13 @@ private fun formatFilename(filename: String): String {
     val match = Regex("""(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})""").find(base) ?: return base
     val (year, month, day, hour, min, sec) = match.destructured
     return "$year-$month-$day $hour:$min:$sec"
+}
+
+private fun formatDuration(millis: Long): String {
+    val totalSeconds = (millis / 1000).coerceAtLeast(0L)
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "%d:%02d".format(minutes, seconds)
 }
 
 private fun highlightMatches(text: String, query: String): AnnotatedString = buildAnnotatedString {

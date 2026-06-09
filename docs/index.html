@@ -154,16 +154,24 @@
     .hero h1 {
       position: relative;
       font-family: 'Syne', sans-serif;
-      font-size: clamp(2.2rem, 4vw, 3.5rem);
       font-weight: 800;
-      line-height: 1.45;
-      letter-spacing: -0.5px;
-      color: #fff;
-      margin-bottom: 36px;
+      margin-bottom: 40px;
     }
-    .hero h1 .h1-line1 {
+    .hero h1 .h1-main {
       display: block;
-      margin-bottom: 0.18em;
+      font-size: clamp(4rem, 9.5vw, 7rem);
+      line-height: 0.92;
+      letter-spacing: -3px;
+      color: #fff;
+      margin-bottom: 0.4em;
+    }
+    .hero h1 .h1-tag {
+      display: block;
+      font-size: clamp(1rem, 2.2vw, 1.6rem);
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      line-height: 1;
     }
     .hero h1 .grad {
       background: linear-gradient(135deg, var(--violet) 0%, var(--cyan) 100%);
@@ -536,8 +544,8 @@
   <div class="hero-glow-2"></div>
   <div class="hero-badge">Now on Google Play</div>
   <h1>
-    <span class="h1-line1">Your voice.</span>
-    <span class="grad">Understood locally.</span>
+    <span class="h1-main">Your voice.</span>
+    <span class="h1-tag grad">Understood locally.</span>
   </h1>
   <p class="hero-sub">
     Record, transcribe, and analyze your thoughts with on-device AI.

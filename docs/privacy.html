@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — Daedalus Echo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      line-height: 1.7;
+      padding: 40px 20px 80px;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; }
+    header { margin-bottom: 48px; }
+    header a { color: #a78bfa; text-decoration: none; font-size: 0.9rem; }
+    header a:hover { text-decoration: underline; }
+    h1 { font-size: 2rem; font-weight: 700; margin: 12px 0 4px; color: #fff; }
+    .updated { color: #94a3b8; font-size: 0.875rem; }
+    .badge {
+      display: inline-block;
+      background: #1e1b4b;
+      border: 1px solid #4f46e5;
+      color: #a78bfa;
+      font-size: 0.8rem;
+      padding: 4px 12px;
+      border-radius: 999px;
+      margin-bottom: 32px;
+    }
+    h2 { font-size: 1.15rem; font-weight: 600; color: #c7d2fe; margin: 36px 0 10px; }
+    p { color: #cbd5e1; margin-bottom: 14px; }
+    ul { color: #cbd5e1; margin: 0 0 14px 20px; }
+    ul li { margin-bottom: 6px; }
+    .highlight {
+      background: #1e1b4b;
+      border-left: 3px solid #6366f1;
+      border-radius: 6px;
+      padding: 16px 20px;
+      margin: 24px 0;
+    }
+    .highlight p { margin: 0; color: #e0e7ff; }
+    a { color: #818cf8; }
+    a:hover { color: #a78bfa; }
+    footer { margin-top: 60px; color: #475569; font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <a href="index.html">← Daedalus Echo</a>
+    <h1>Privacy Policy</h1>
+    <p class="updated">Last updated: June 8, 2026</p>
+  </header>
+
+  <div class="badge">No data collected · No cloud · No accounts</div>
+
+  <div class="highlight">
+    <p><strong>Short version:</strong> Daedalus Echo runs entirely on your device. No personal data is ever collected, transmitted, or stored outside your phone.</p>
+  </div>
+
+  <h2>1. What data we collect</h2>
+  <p><strong>None.</strong> Daedalus Echo does not collect, store, or transmit any personal data, voice recordings, transcripts, or usage information to any server or third party.</p>
+  <p>All data you create in the app — recordings, transcripts, summaries, notes — exists exclusively on your device and is never sent anywhere.</p>
+
+  <h2>2. On-device processing</h2>
+  <p>All AI processing in Daedalus Echo happens locally on your Android device:</p>
+  <ul>
+    <li><strong>Speech-to-text</strong> — Whisper (via sherpa-onnx) runs entirely on-device</li>
+    <li><strong>Summarization &amp; analysis</strong> — Gemma 3 1B runs entirely on-device via MediaPipe</li>
+    <li><strong>Semantic search</strong> — Universal Sentence Encoder Lite runs entirely on-device</li>
+  </ul>
+  <p>No audio, text, or query is ever sent to an external server for processing.</p>
+
+  <h2>3. Network usage</h2>
+  <p>Daedalus Echo requires internet access only once: during the initial setup, the app downloads the AI models (~770 MB total) from public distribution endpoints. This is a one-time download. After setup, the app works fully offline.</p>
+  <p>The app does not phone home, send analytics, or make any other network requests.</p>
+
+  <h2>4. Permissions</h2>
+  <p>The app requests the following Android permissions:</p>
+  <ul>
+    <li><strong>RECORD_AUDIO</strong> — to record voice notes via the microphone</li>
+    <li><strong>BLUETOOTH / BLUETOOTH_CONNECT</strong> — to connect to Bluetooth microphones</li>
+    <li><strong>INTERNET</strong> — for the one-time AI model download described above</li>
+    <li><strong>READ_MEDIA_AUDIO</strong> — to import existing audio files from your device</li>
+  </ul>
+  <p>No permission is used to collect or transmit data.</p>
+
+  <h2>5. Third-party SDKs and services</h2>
+  <p>Daedalus Echo does not integrate any analytics, advertising, crash reporting, or third-party tracking SDKs. There are no third parties that receive your data.</p>
+
+  <h2>6. Data storage</h2>
+  <p>All app data (recordings, transcripts, summaries, embeddings) is stored in the app's private storage on your device. Uninstalling the app removes all associated data.</p>
+
+  <h2>7. Children's privacy</h2>
+  <p>Daedalus Echo is not directed at children under 13. We do not knowingly collect any information from children.</p>
+
+  <h2>8. Changes to this policy</h2>
+  <p>If this policy changes materially, the updated version will be posted at this URL with a revised "Last updated" date.</p>
+
+  <h2>9. Contact</h2>
+  <p>Questions about this privacy policy? Email: <a href="mailto:ciscodg@gmail.com">ciscodg@gmail.com</a></p>
+
+  <footer>
+    <p>© 2026 DaedalusApps · <a href="index.html">daedalus-echo</a></p>
+  </footer>
+
+</div>
+</body>
+</html>

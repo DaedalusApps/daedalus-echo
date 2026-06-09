@@ -295,80 +295,52 @@
 
     /* ─── SCREENSHOTS ─── */
     .screenshots-section {
-      padding: 80px 0 80px;
-      overflow: hidden;
+      padding: 80px 24px 100px;
     }
     .screenshots-header {
-      padding: 0 24px;
-      max-width: 1080px;
-      margin: 0 auto 48px;
+      max-width: 760px;
+      margin: 0 auto 56px;
     }
-    .screenshots-track-wrap {
-      position: relative;
+    .shots-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 200px);
+      gap: 28px 20px;
+      justify-content: center;
     }
-    .screenshots-track-wrap::before,
-    .screenshots-track-wrap::after {
-      content: '';
-      position: absolute;
-      top: 0; bottom: 0;
-      width: 80px;
-      z-index: 2;
-      pointer-events: none;
-    }
-    .screenshots-track-wrap::before {
-      left: 0;
-      background: linear-gradient(to right, var(--bg), transparent);
-    }
-    .screenshots-track-wrap::after {
-      right: 0;
-      background: linear-gradient(to left, var(--bg), transparent);
-    }
-    .screenshots-track {
-      display: flex;
-      gap: 24px;
-      padding: 16px 80px 40px;
-      overflow-x: auto;
-      scroll-snap-type: x mandatory;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
-    }
-    .screenshots-track::-webkit-scrollbar { display: none; }
     .shot-item {
-      scroll-snap-align: center;
-      flex-shrink: 0;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 16px;
+      gap: 14px;
     }
+    .shot-item:nth-child(3n+2) { padding-top: 48px; }
     .phone-frame {
       position: relative;
-      width: 220px;
+      width: 200px;
       background: #0a0a12;
-      border-radius: 36px;
-      border: 2px solid rgba(255,255,255,0.12);
+      border-radius: 32px;
+      border: 2px solid rgba(255,255,255,0.1);
       box-shadow:
         0 0 0 1px rgba(0,0,0,0.5),
-        0 32px 64px rgba(0,0,0,0.6),
+        0 24px 48px rgba(0,0,0,0.55),
         inset 0 1px 0 rgba(255,255,255,0.06);
       overflow: hidden;
-      padding: 0;
       transition: transform 0.3s, box-shadow 0.3s;
     }
     .phone-frame:hover {
-      transform: translateY(-6px) scale(1.02);
+      transform: translateY(-8px) scale(1.02);
       box-shadow:
-        0 0 0 1px rgba(129,140,248,0.2),
-        0 48px 80px rgba(0,0,0,0.7),
-        0 0 40px rgba(79,70,229,0.15);
+        0 0 0 1px rgba(129,140,248,0.25),
+        0 40px 72px rgba(0,0,0,0.65),
+        0 0 36px rgba(79,70,229,0.18);
     }
     .phone-frame::before {
       content: '';
       position: absolute;
-      top: 12px;
+      top: 10px;
       left: 50%;
       transform: translateX(-50%);
-      width: 60px; height: 8px;
+      width: 52px; height: 7px;
       background: rgba(255,255,255,0.08);
       border-radius: 999px;
       z-index: 3;
@@ -376,48 +348,14 @@
     .phone-frame img {
       width: 100%;
       display: block;
-      border-radius: 34px;
+      border-radius: 30px;
     }
     .shot-caption {
-      font-size: 0.8rem;
+      font-size: 0.78rem;
       color: var(--muted);
       font-weight: 400;
       letter-spacing: 0.2px;
       text-align: center;
-    }
-    .screenshots-nav {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 16px;
-      margin-top: 28px;
-    }
-    .nav-btn {
-      width: 36px; height: 36px;
-      background: var(--bg2);
-      border: 1px solid var(--border);
-      border-radius: 50%;
-      color: var(--muted2);
-      cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      transition: background 0.2s, border-color 0.2s, color 0.2s;
-      font-size: 1rem;
-      flex-shrink: 0;
-    }
-    .nav-btn:hover { background: var(--bg3); border-color: rgba(129,140,248,0.3); color: #fff; }
-    .carousel-dots { display: flex; gap: 8px; align-items: center; }
-    .carousel-dot {
-      width: 6px; height: 6px;
-      border-radius: 999px;
-      background: rgba(255,255,255,0.15);
-      border: none;
-      padding: 0;
-      cursor: pointer;
-      transition: background 0.25s, width 0.25s;
-    }
-    .carousel-dot.active {
-      width: 20px;
-      background: var(--violet);
     }
 
     /* ─── PRIVACY ─── */
@@ -622,50 +560,31 @@
     <h2 class="section-heading">Built for clarity</h2>
     <p class="section-sub">A focused, dark-first interface designed around your voice.</p>
   </div>
-  <div class="screenshots-track-wrap">
-    <div class="screenshots-track" id="track">
-      <div class="shot-item">
-        <div class="phone-frame">
-          <img src="screenshots/01_home_ask.png" alt="Ask your notes" loading="lazy" />
-        </div>
-        <span class="shot-caption">Ask anything across all notes</span>
-      </div>
-      <div class="shot-item">
-        <div class="phone-frame">
-          <img src="screenshots/02_recordings.png" alt="Recordings list" loading="lazy" />
-        </div>
-        <span class="shot-caption">All your recordings</span>
-      </div>
-      <div class="shot-item">
-        <div class="phone-frame">
-          <img src="screenshots/03_transcript.png" alt="Full transcript" loading="lazy" />
-        </div>
-        <span class="shot-caption">Full transcript</span>
-      </div>
-      <div class="shot-item">
-        <div class="phone-frame">
-          <img src="screenshots/04_summary.png" alt="AI summary" loading="lazy" />
-        </div>
-        <span class="shot-caption">AI-generated summary</span>
-      </div>
-      <div class="shot-item">
-        <div class="phone-frame">
-          <img src="screenshots/05_mindmap.png" alt="Mind map" loading="lazy" />
-        </div>
-        <span class="shot-caption">Per-note mind map</span>
-      </div>
-      <div class="shot-item">
-        <div class="phone-frame">
-          <img src="screenshots/07_global_mindmap.png" alt="Knowledge graph" loading="lazy" />
-        </div>
-        <span class="shot-caption">Global knowledge graph</span>
-      </div>
+  <div class="shots-grid reveal">
+    <div class="shot-item">
+      <div class="phone-frame"><img src="screenshots/01_home_ask.png" alt="Ask your notes" loading="lazy" /></div>
+      <span class="shot-caption">Ask anything across all notes</span>
     </div>
-  </div>
-  <div class="screenshots-nav">
-    <button class="nav-btn" id="prev" aria-label="Previous">&#8592;</button>
-    <div class="carousel-dots" id="dots"></div>
-    <button class="nav-btn" id="next" aria-label="Next">&#8594;</button>
+    <div class="shot-item">
+      <div class="phone-frame"><img src="screenshots/02_recordings.png" alt="Recordings list" loading="lazy" /></div>
+      <span class="shot-caption">All your recordings</span>
+    </div>
+    <div class="shot-item">
+      <div class="phone-frame"><img src="screenshots/03_transcript.png" alt="Full transcript" loading="lazy" /></div>
+      <span class="shot-caption">Full transcript</span>
+    </div>
+    <div class="shot-item">
+      <div class="phone-frame"><img src="screenshots/04_summary.png" alt="AI summary" loading="lazy" /></div>
+      <span class="shot-caption">AI-generated summary</span>
+    </div>
+    <div class="shot-item">
+      <div class="phone-frame"><img src="screenshots/05_mindmap.png" alt="Mind map" loading="lazy" /></div>
+      <span class="shot-caption">Per-note mind map</span>
+    </div>
+    <div class="shot-item">
+      <div class="phone-frame"><img src="screenshots/07_global_mindmap.png" alt="Knowledge graph" loading="lazy" /></div>
+      <span class="shot-caption">Global knowledge graph</span>
+    </div>
   </div>
 </section>
 
@@ -714,38 +633,6 @@
   }, { threshold: 0.12 });
   document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 
-  // Auto-advancing carousel
-  const track = document.getElementById('track');
-  const items = Array.from(track.querySelectorAll('.shot-item'));
-  const dotsWrap = document.getElementById('dots');
-  let current = 0, timer;
-
-  items.forEach((_, i) => {
-    const d = document.createElement('button');
-    d.className = 'carousel-dot' + (i === 0 ? ' active' : '');
-    d.setAttribute('aria-label', 'Go to slide ' + (i + 1));
-    d.addEventListener('click', () => { stopAuto(); goTo(i); startAuto(); });
-    dotsWrap.appendChild(d);
-  });
-
-  function goTo(i) {
-    current = (i + items.length) % items.length;
-    items[current].scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-    dotsWrap.querySelectorAll('.carousel-dot').forEach((d, j) => d.classList.toggle('active', j === current));
-  }
-
-  function startAuto() { timer = setInterval(() => goTo(current + 1), 3000); }
-  function stopAuto()  { clearInterval(timer); }
-
-  document.getElementById('prev').addEventListener('click', () => { stopAuto(); goTo(current - 1); startAuto(); });
-  document.getElementById('next').addEventListener('click', () => { stopAuto(); goTo(current + 1); startAuto(); });
-
-  track.addEventListener('mouseenter', stopAuto);
-  track.addEventListener('mouseleave', startAuto);
-  track.addEventListener('touchstart', stopAuto, { passive: true });
-  track.addEventListener('touchend',   startAuto, { passive: true });
-
-  startAuto();
 </script>
 
 </body>

@@ -5,229 +5,692 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Daedalus Echo — Private AI Voice Notes</title>
   <meta name="description" content="Record, transcribe, and analyze your voice notes entirely on-device. No cloud. No subscriptions. 100% private." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet" />
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #0f172a;
-      color: #e2e8f0;
-      line-height: 1.6;
+    :root {
+      --bg:        #080d1a;
+      --bg2:       #0d1425;
+      --bg3:       #111827;
+      --border:    rgba(255,255,255,0.07);
+      --indigo:    #4f46e5;
+      --indigo2:   #6366f1;
+      --violet:    #818cf8;
+      --violet2:   #a78bfa;
+      --cyan:      #67e8f9;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --muted2:    #94a3b8;
     }
 
-    /* NAV */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ─── NOISE OVERLAY ─── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+      opacity: 0.025;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ─── NAV ─── */
     nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 20px 40px;
-      border-bottom: 1px solid #1e293b;
+      padding: 18px 48px;
+      background: rgba(8,13,26,0.85);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
     }
-    .nav-logo { font-weight: 700; font-size: 1.1rem; color: #fff; letter-spacing: -0.5px; }
-    .nav-logo span { color: #818cf8; }
-    nav a { color: #94a3b8; text-decoration: none; font-size: 0.9rem; }
-    nav a:hover { color: #e2e8f0; }
+    .nav-logo {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 1.1rem;
+      color: #fff;
+      letter-spacing: -0.3px;
+      text-decoration: none;
+    }
+    .nav-logo em {
+      font-style: normal;
+      background: linear-gradient(90deg, var(--violet), var(--cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .nav-links { display: flex; gap: 32px; align-items: center; }
+    .nav-links a {
+      color: var(--muted2);
+      text-decoration: none;
+      font-size: 0.875rem;
+      font-weight: 400;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); }
+    .nav-cta {
+      background: var(--indigo) !important;
+      color: #fff !important;
+      padding: 8px 20px !important;
+      border-radius: 8px !important;
+      font-weight: 500 !important;
+      font-size: 0.875rem !important;
+      transition: background 0.2s !important;
+    }
+    .nav-cta:hover { background: var(--indigo2) !important; }
 
-    /* HERO */
+    /* ─── HERO ─── */
     .hero {
+      position: relative;
       text-align: center;
-      padding: 80px 20px 60px;
-      background: radial-gradient(ellipse at 50% 0%, #1e1b4b 0%, transparent 70%);
+      padding: 120px 24px 100px;
+      overflow: hidden;
+    }
+    .hero-glow {
+      position: absolute;
+      top: -120px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 900px;
+      height: 600px;
+      background: radial-gradient(ellipse at 50% 30%, rgba(79,70,229,0.35) 0%, rgba(129,140,248,0.1) 40%, transparent 70%);
+      pointer-events: none;
+    }
+    .hero-glow-2 {
+      position: absolute;
+      top: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 600px;
+      height: 300px;
+      background: radial-gradient(ellipse, rgba(103,232,249,0.06) 0%, transparent 70%);
+      pointer-events: none;
     }
     .hero-badge {
-      display: inline-block;
-      background: #1e1b4b;
-      border: 1px solid #4f46e5;
-      color: #a78bfa;
-      font-size: 0.8rem;
-      padding: 5px 14px;
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(79,70,229,0.12);
+      border: 1px solid rgba(99,102,241,0.3);
+      color: var(--violet2);
+      font-size: 0.78rem;
+      font-weight: 500;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      padding: 6px 16px;
       border-radius: 999px;
-      margin-bottom: 24px;
-      letter-spacing: 0.5px;
+      margin-bottom: 36px;
+    }
+    .hero-badge::before {
+      content: '';
+      width: 6px; height: 6px;
+      background: var(--cyan);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--cyan);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.8); }
     }
     .hero h1 {
-      font-size: clamp(2.2rem, 5vw, 3.5rem);
+      position: relative;
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(2.8rem, 6vw, 5rem);
       font-weight: 800;
+      line-height: 1.08;
+      letter-spacing: -2px;
       color: #fff;
-      letter-spacing: -1px;
-      line-height: 1.15;
-      margin-bottom: 20px;
+      margin-bottom: 24px;
     }
-    .hero h1 span { color: #818cf8; }
-    .hero p {
+    .hero h1 .grad {
+      background: linear-gradient(135deg, var(--violet) 0%, var(--cyan) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-sub {
+      position: relative;
       font-size: 1.15rem;
-      color: #94a3b8;
-      max-width: 540px;
-      margin: 0 auto 36px;
+      font-weight: 300;
+      color: var(--muted2);
+      max-width: 520px;
+      margin: 0 auto 44px;
+      line-height: 1.75;
     }
+    .hero-actions { position: relative; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
     .btn-primary {
-      display: inline-block;
-      background: #4f46e5;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--indigo);
       color: #fff;
-      font-weight: 600;
-      padding: 14px 32px;
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 500;
+      padding: 14px 28px;
       border-radius: 10px;
       text-decoration: none;
-      font-size: 1rem;
-      transition: background 0.2s;
+      font-size: 0.95rem;
+      transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+      box-shadow: 0 0 40px rgba(79,70,229,0.35);
     }
-    .btn-primary:hover { background: #6366f1; }
-    .hero-sub { margin-top: 14px; font-size: 0.85rem; color: #475569; }
+    .btn-primary:hover {
+      background: var(--indigo2);
+      transform: translateY(-1px);
+      box-shadow: 0 0 50px rgba(79,70,229,0.5);
+    }
+    .btn-primary svg { flex-shrink: 0; }
+    .hero-req {
+      position: relative;
+      margin-top: 20px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      letter-spacing: 0.3px;
+    }
 
-    /* FEATURES */
-    .features {
-      max-width: 1000px;
+    /* ─── SECTION LABEL ─── */
+    .section-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--violet);
+      margin-bottom: 12px;
+    }
+    .section-heading {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(1.6rem, 3vw, 2.2rem);
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.5px;
+      margin-bottom: 12px;
+    }
+    .section-sub {
+      color: var(--muted2);
+      font-size: 1rem;
+      font-weight: 300;
+      max-width: 480px;
+    }
+
+    /* ─── FEATURES ─── */
+    .features-section {
+      padding: 80px 24px;
+      max-width: 1080px;
       margin: 0 auto;
-      padding: 60px 20px;
+    }
+    .features-header { margin-bottom: 48px; }
+    .features-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 20px;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 16px;
     }
     .feature-card {
-      background: #0f1729;
-      border: 1px solid #1e293b;
-      border-radius: 12px;
-      padding: 28px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px 30px;
+      transition: border-color 0.25s, transform 0.2s;
+      position: relative;
+      overflow: hidden;
     }
-    .feature-icon { font-size: 1.8rem; margin-bottom: 14px; }
-    .feature-card h3 { font-size: 1rem; font-weight: 600; color: #e2e8f0; margin-bottom: 8px; }
-    .feature-card p { color: #64748b; font-size: 0.9rem; }
+    .feature-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(129,140,248,0.3), transparent);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .feature-card:hover { border-color: rgba(129,140,248,0.25); transform: translateY(-2px); }
+    .feature-card:hover::before { opacity: 1; }
+    .feature-icon {
+      width: 44px; height: 44px;
+      background: rgba(79,70,229,0.15);
+      border: 1px solid rgba(99,102,241,0.25);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.3rem;
+      margin-bottom: 18px;
+    }
+    .feature-card h3 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 8px;
+      letter-spacing: -0.2px;
+    }
+    .feature-card p { color: var(--muted); font-size: 0.9rem; line-height: 1.65; font-weight: 300; }
 
-    /* PRIVACY SECTION */
-    .privacy-section {
-      background: #0a0f1e;
-      border-top: 1px solid #1e293b;
-      border-bottom: 1px solid #1e293b;
-      padding: 60px 20px;
+    /* ─── SCREENSHOTS ─── */
+    .screenshots-section {
+      padding: 80px 0 80px;
+      overflow: hidden;
+    }
+    .screenshots-header {
+      padding: 0 24px;
+      max-width: 1080px;
+      margin: 0 auto 48px;
+    }
+    .screenshots-track-wrap {
+      position: relative;
+    }
+    .screenshots-track-wrap::before,
+    .screenshots-track-wrap::after {
+      content: '';
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 80px;
+      z-index: 2;
+      pointer-events: none;
+    }
+    .screenshots-track-wrap::before {
+      left: 0;
+      background: linear-gradient(to right, var(--bg), transparent);
+    }
+    .screenshots-track-wrap::after {
+      right: 0;
+      background: linear-gradient(to left, var(--bg), transparent);
+    }
+    .screenshots-track {
+      display: flex;
+      gap: 24px;
+      padding: 16px 80px 40px;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .screenshots-track::-webkit-scrollbar { display: none; }
+    .shot-item {
+      scroll-snap-align: center;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    .phone-frame {
+      position: relative;
+      width: 220px;
+      background: #0a0a12;
+      border-radius: 36px;
+      border: 2px solid rgba(255,255,255,0.12);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.5),
+        0 32px 64px rgba(0,0,0,0.6),
+        inset 0 1px 0 rgba(255,255,255,0.06);
+      overflow: hidden;
+      padding: 0;
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+    .phone-frame:hover {
+      transform: translateY(-6px) scale(1.02);
+      box-shadow:
+        0 0 0 1px rgba(129,140,248,0.2),
+        0 48px 80px rgba(0,0,0,0.7),
+        0 0 40px rgba(79,70,229,0.15);
+    }
+    .phone-frame::before {
+      content: '';
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 60px; height: 8px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 999px;
+      z-index: 3;
+    }
+    .phone-frame img {
+      width: 100%;
+      display: block;
+      border-radius: 34px;
+    }
+    .shot-caption {
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-weight: 400;
+      letter-spacing: 0.2px;
       text-align: center;
     }
-    .privacy-section h2 { font-size: 1.6rem; font-weight: 700; color: #fff; margin-bottom: 12px; }
-    .privacy-section p { color: #64748b; max-width: 520px; margin: 0 auto 30px; }
-    .privacy-pills { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+    .screenshots-nav {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .nav-btn {
+      width: 38px; height: 38px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      color: var(--muted2);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.2s, border-color 0.2s, color 0.2s;
+      font-size: 1rem;
+    }
+    .nav-btn:hover { background: var(--bg3); border-color: rgba(129,140,248,0.3); color: #fff; }
+
+    /* ─── PRIVACY ─── */
+    .privacy-section {
+      padding: 80px 24px;
+      max-width: 1080px;
+      margin: 0 auto;
+    }
+    .privacy-inner {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 56px 48px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .privacy-inner::before {
+      content: '';
+      position: absolute;
+      top: -100px; left: 50%;
+      transform: translateX(-50%);
+      width: 500px; height: 300px;
+      background: radial-gradient(ellipse, rgba(79,70,229,0.12), transparent 70%);
+      pointer-events: none;
+    }
+    .privacy-icon {
+      font-size: 2.5rem;
+      margin-bottom: 20px;
+      display: block;
+    }
+    .privacy-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      margin-top: 28px;
+    }
     .pill {
-      background: #1e1b4b;
-      border: 1px solid #312e81;
+      background: rgba(79,70,229,0.1);
+      border: 1px solid rgba(99,102,241,0.2);
       color: #a5b4fc;
       padding: 6px 16px;
       border-radius: 999px;
-      font-size: 0.85rem;
+      font-size: 0.82rem;
+      font-weight: 400;
+      transition: background 0.2s, border-color 0.2s;
     }
+    .pill:hover { background: rgba(79,70,229,0.2); border-color: rgba(99,102,241,0.4); }
 
-    /* REQUIREMENTS */
-    .requirements {
-      max-width: 700px;
+    /* ─── REQUIREMENTS ─── */
+    .requirements-section {
+      padding: 40px 24px 80px;
+      max-width: 720px;
       margin: 0 auto;
-      padding: 60px 20px;
     }
-    .requirements h2 { font-size: 1.3rem; font-weight: 600; color: #e2e8f0; margin-bottom: 20px; }
-    .req-list { list-style: none; }
+    .req-list { list-style: none; margin-top: 28px; }
     .req-list li {
       display: flex;
-      align-items: baseline;
-      gap: 10px;
-      padding: 10px 0;
-      border-bottom: 1px solid #1e293b;
-      color: #94a3b8;
-      font-size: 0.95rem;
+      gap: 14px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted2);
+      font-size: 0.925rem;
+      font-weight: 300;
+      line-height: 1.5;
     }
     .req-list li:last-child { border-bottom: none; }
-    .req-list li::before { content: "—"; color: #4f46e5; flex-shrink: 0; }
+    .req-list li::before {
+      content: "›";
+      color: var(--indigo2);
+      font-size: 1.1rem;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
 
-    /* FOOTER */
+    /* ─── FOOTER ─── */
     footer {
-      border-top: 1px solid #1e293b;
-      padding: 30px 40px;
+      border-top: 1px solid var(--border);
+      padding: 28px 48px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       flex-wrap: wrap;
       gap: 12px;
-      color: #475569;
-      font-size: 0.85rem;
     }
-    footer a { color: #64748b; text-decoration: none; }
-    footer a:hover { color: #94a3b8; }
+    .footer-logo {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+    .footer-logo em {
+      font-style: normal;
+      color: var(--violet);
+    }
+    .footer-links { display: flex; gap: 24px; }
+    .footer-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+      transition: color 0.2s;
+    }
+    .footer-links a:hover { color: var(--muted2); }
+
+    /* ─── SCROLL REVEAL ─── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+    .reveal.visible { opacity: 1; transform: none; }
+    .reveal-delay-1 { transition-delay: 0.1s; }
+    .reveal-delay-2 { transition-delay: 0.2s; }
+    .reveal-delay-3 { transition-delay: 0.3s; }
+    .reveal-delay-4 { transition-delay: 0.4s; }
+
+    @media (max-width: 640px) {
+      nav { padding: 16px 20px; }
+      .nav-links { gap: 16px; }
+      .hero { padding: 80px 20px 60px; }
+      .privacy-inner { padding: 36px 24px; }
+      footer { padding: 24px 20px; }
+    }
   </style>
 </head>
 <body>
 
 <nav>
-  <span class="nav-logo">Daedalus <span>Echo</span></span>
-  <a href="privacy.html">Privacy Policy</a>
+  <a href="#" class="nav-logo">Daedalus <em>Echo</em></a>
+  <div class="nav-links">
+    <a href="privacy.html">Privacy</a>
+    <a href="https://github.com/DaedalusApps/daedalus-echo">GitHub</a>
+    <a href="https://play.google.com/store/apps/details?id=com.daedalus.echo" class="nav-cta">Get the app</a>
+  </div>
 </nav>
 
 <section class="hero">
-  <div class="hero-badge">Available on Google Play</div>
-  <h1>Voice notes with<br><span>on-device AI</span></h1>
-  <p>Record, transcribe, and analyze your thoughts entirely on your Android device. No cloud. No subscriptions. No data ever leaves your phone.</p>
-  <a href="https://play.google.com/store/apps/details?id=com.daedalus.echo" class="btn-primary">Get it on Google Play</a>
-  <p class="hero-sub">Android 8.0+ · ARM64 · 4 GB RAM minimum</p>
+  <div class="hero-glow"></div>
+  <div class="hero-glow-2"></div>
+  <div class="hero-badge">Now on Google Play</div>
+  <h1>
+    Your voice.<br>
+    <span class="grad">Understood locally.</span>
+  </h1>
+  <p class="hero-sub">
+    Record, transcribe, and analyze your thoughts with on-device AI.
+    No cloud. No subscriptions. No data ever leaves your phone.
+  </p>
+  <div class="hero-actions">
+    <a href="https://play.google.com/store/apps/details?id=com.daedalus.echo" class="btn-primary">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 20.5v-17c0-.83 1.01-1.3 1.67-.75l13 8.5c.59.38.59 1.12 0 1.5l-13 8.5C3.01 21.8 3 21.33 3 20.5z"/></svg>
+      Get it on Google Play
+    </a>
+  </div>
+  <p class="hero-req">Android 8.0+ · ARM64 · 4 GB RAM</p>
 </section>
 
-<section class="features">
-  <div class="feature-card">
-    <div class="feature-icon">🎙</div>
-    <h3>Record</h3>
-    <p>Capture audio with your built-in microphone or a paired Bluetooth headset. High-quality recordings stored locally and securely.</p>
+<section class="features-section">
+  <div class="features-header reveal">
+    <p class="section-label">What it does</p>
+    <h2 class="section-heading">Everything on your device</h2>
+    <p class="section-sub">Six powerful features. Zero cloud dependency.</p>
   </div>
-  <div class="feature-card">
-    <div class="feature-icon">📝</div>
-    <h3>Transcribe</h3>
-    <p>Powered by Whisper (via sherpa-onnx), every recording is automatically converted to searchable text — completely offline.</p>
+  <div class="features-grid">
+    <div class="feature-card reveal reveal-delay-1">
+      <div class="feature-icon">🎙</div>
+      <h3>Record</h3>
+      <p>Capture audio with your built-in microphone or a paired Bluetooth headset. Stored locally and securely.</p>
+    </div>
+    <div class="feature-card reveal reveal-delay-2">
+      <div class="feature-icon">📝</div>
+      <h3>Transcribe</h3>
+      <p>Powered by Whisper via sherpa-onnx, every recording becomes searchable text — completely offline.</p>
+    </div>
+    <div class="feature-card reveal reveal-delay-3">
+      <div class="feature-icon">🧠</div>
+      <h3>AI Summaries</h3>
+      <p>Gemma 3 1B runs entirely on-device to generate titles, summaries, key topics, and mind maps per note.</p>
+    </div>
+    <div class="feature-card reveal reveal-delay-1">
+      <div class="feature-icon">💬</div>
+      <h3>Ask Your Notes</h3>
+      <p>Ask a natural-language question across your entire library. Semantic search finds the answer, on-device.</p>
+    </div>
+    <div class="feature-card reveal reveal-delay-2">
+      <div class="feature-icon">🗺</div>
+      <h3>Knowledge Graph</h3>
+      <p>Visualize semantic connections across all your recordings — see which ideas appear together over time.</p>
+    </div>
+    <div class="feature-card reveal reveal-delay-3">
+      <div class="feature-icon">🔍</div>
+      <h3>Search</h3>
+      <p>Instantly search across all transcripts and summaries. Find any recording by content, not just title.</p>
+    </div>
   </div>
-  <div class="feature-card">
-    <div class="feature-icon">🧠</div>
-    <h3>AI Summaries</h3>
-    <p>Gemma 3 1B, running entirely on your device, generates a title, summary, key topics, and an interactive mind map for each note.</p>
+</section>
+
+<section class="screenshots-section">
+  <div class="screenshots-header reveal">
+    <p class="section-label">See it in action</p>
+    <h2 class="section-heading">Built for clarity</h2>
+    <p class="section-sub">A focused, dark-first interface designed around your voice.</p>
   </div>
-  <div class="feature-card">
-    <div class="feature-icon">💬</div>
-    <h3>Ask Your Notes</h3>
-    <p>Ask a natural-language question across your entire library. On-device semantic search finds relevant notes and Gemma synthesizes an answer.</p>
+  <div class="screenshots-track-wrap">
+    <div class="screenshots-track" id="track">
+      <div class="shot-item">
+        <div class="phone-frame">
+          <img src="screenshots/01_home_ask.png" alt="Ask your notes" loading="lazy" />
+        </div>
+        <span class="shot-caption">Ask anything across all notes</span>
+      </div>
+      <div class="shot-item">
+        <div class="phone-frame">
+          <img src="screenshots/02_recordings.png" alt="Recordings list" loading="lazy" />
+        </div>
+        <span class="shot-caption">All your recordings</span>
+      </div>
+      <div class="shot-item">
+        <div class="phone-frame">
+          <img src="screenshots/03_transcript.png" alt="Full transcript" loading="lazy" />
+        </div>
+        <span class="shot-caption">Full transcript</span>
+      </div>
+      <div class="shot-item">
+        <div class="phone-frame">
+          <img src="screenshots/04_summary.png" alt="AI summary" loading="lazy" />
+        </div>
+        <span class="shot-caption">AI-generated summary</span>
+      </div>
+      <div class="shot-item">
+        <div class="phone-frame">
+          <img src="screenshots/05_mindmap.png" alt="Mind map" loading="lazy" />
+        </div>
+        <span class="shot-caption">Per-note mind map</span>
+      </div>
+      <div class="shot-item">
+        <div class="phone-frame">
+          <img src="screenshots/07_global_mindmap.png" alt="Knowledge graph" loading="lazy" />
+        </div>
+        <span class="shot-caption">Global knowledge graph</span>
+      </div>
+    </div>
   </div>
-  <div class="feature-card">
-    <div class="feature-icon">🗺</div>
-    <h3>Knowledge Graph</h3>
-    <p>Visualize semantic connections across all your recordings — explore which topics and ideas appear together over time.</p>
-  </div>
-  <div class="feature-card">
-    <div class="feature-icon">🔍</div>
-    <h3>Search</h3>
-    <p>Instantly search across all transcripts and summaries. Find any recording by content, not just title.</p>
+  <div class="screenshots-nav">
+    <button class="nav-btn" id="prev" aria-label="Previous">&#8592;</button>
+    <button class="nav-btn" id="next" aria-label="Next">&#8594;</button>
   </div>
 </section>
 
 <section class="privacy-section">
-  <h2>Privacy by design</h2>
-  <p>All AI processing happens 100% locally. No internet required after the initial model download. No accounts. No telemetry.</p>
-  <div class="privacy-pills">
-    <span class="pill">No cloud processing</span>
-    <span class="pill">No accounts required</span>
-    <span class="pill">No analytics</span>
-    <span class="pill">No ads</span>
-    <span class="pill">Works offline</span>
-    <span class="pill">No data sold</span>
+  <div class="privacy-inner reveal">
+    <span class="privacy-icon">🔒</span>
+    <p class="section-label" style="justify-content:center;display:flex;">Privacy by design</p>
+    <h2 class="section-heading" style="margin:8px auto 12px;">Your data never leaves your phone</h2>
+    <p class="section-sub" style="margin:0 auto;">All AI processing happens 100% locally. No internet required after the initial model download. No accounts. No telemetry. No exceptions.</p>
+    <div class="privacy-pills">
+      <span class="pill">No cloud processing</span>
+      <span class="pill">No accounts required</span>
+      <span class="pill">No analytics</span>
+      <span class="pill">No ads</span>
+      <span class="pill">Works fully offline</span>
+      <span class="pill">No data sold</span>
+    </div>
   </div>
 </section>
 
-<section class="requirements">
-  <h2>Requirements</h2>
+<section class="requirements-section reveal">
+  <p class="section-label">Requirements</p>
+  <h2 class="section-heading">What you need</h2>
   <ul class="req-list">
     <li>Android 8.0 (API 26) or higher, ARM64</li>
-    <li>4 GB RAM minimum (6 GB+ recommended)</li>
-    <li>~770 MB free storage for AI models (downloaded once on first launch)</li>
+    <li>4 GB RAM minimum — 6 GB+ recommended for best performance</li>
+    <li>~770 MB free storage for AI models, downloaded once on first launch</li>
     <li>Vulkan 1.1+ recommended for GPU acceleration</li>
-    <li>Tested on Samsung Galaxy S24 Ultra · Compatible with most mid-range and flagship devices from 2019 onward</li>
+    <li>Tested on Samsung Galaxy S24 Ultra · Compatible with most mid-range and flagship Android devices from 2019 onward</li>
   </ul>
 </section>
 
 <footer>
-  <span>© 2026 DaedalusApps</span>
-  <span>
-    <a href="privacy.html">Privacy Policy</a> ·
-    <a href="mailto:comms@daedalusapps.com">Contact</a> ·
+  <span class="footer-logo">Daedalus <em>Echo</em> · © 2026 DaedalusApps</span>
+  <div class="footer-links">
+    <a href="privacy.html">Privacy Policy</a>
+    <a href="mailto:comms@daedalusapps.com">Contact</a>
     <a href="https://github.com/DaedalusApps/daedalus-echo">GitHub</a>
-  </span>
+  </div>
 </footer>
+
+<script>
+  // Scroll reveal
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+  // Screenshot carousel nav
+  const track = document.getElementById('track');
+  const itemWidth = () => track.querySelector('.shot-item').offsetWidth + 24;
+  document.getElementById('next').addEventListener('click', () => track.scrollBy({ left: itemWidth(), behavior: 'smooth' }));
+  document.getElementById('prev').addEventListener('click', () => track.scrollBy({ left: -itemWidth(), behavior: 'smooth' }));
+</script>
 
 </body>
 </html>

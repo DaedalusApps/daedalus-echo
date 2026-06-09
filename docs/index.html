@@ -388,11 +388,12 @@
     .screenshots-nav {
       display: flex;
       justify-content: center;
-      gap: 12px;
-      margin-top: 8px;
+      align-items: center;
+      gap: 16px;
+      margin-top: 28px;
     }
     .nav-btn {
-      width: 38px; height: 38px;
+      width: 36px; height: 36px;
       background: var(--bg2);
       border: 1px solid var(--border);
       border-radius: 50%;
@@ -401,8 +402,23 @@
       display: flex; align-items: center; justify-content: center;
       transition: background 0.2s, border-color 0.2s, color 0.2s;
       font-size: 1rem;
+      flex-shrink: 0;
     }
     .nav-btn:hover { background: var(--bg3); border-color: rgba(129,140,248,0.3); color: #fff; }
+    .carousel-dots { display: flex; gap: 8px; align-items: center; }
+    .carousel-dot {
+      width: 6px; height: 6px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.15);
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      transition: background 0.25s, width 0.25s;
+    }
+    .carousel-dot.active {
+      width: 20px;
+      background: var(--violet);
+    }
 
     /* ─── PRIVACY ─── */
     .privacy-section {
@@ -648,6 +664,7 @@
   </div>
   <div class="screenshots-nav">
     <button class="nav-btn" id="prev" aria-label="Previous">&#8592;</button>
+    <div class="carousel-dots" id="dots"></div>
     <button class="nav-btn" id="next" aria-label="Next">&#8594;</button>
   </div>
 </section>
@@ -697,11 +714,38 @@
   }, { threshold: 0.12 });
   document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 
-  // Screenshot carousel nav
+  // Auto-advancing carousel
   const track = document.getElementById('track');
-  const itemWidth = () => track.querySelector('.shot-item').offsetWidth + 24;
-  document.getElementById('next').addEventListener('click', () => track.scrollBy({ left: itemWidth(), behavior: 'smooth' }));
-  document.getElementById('prev').addEventListener('click', () => track.scrollBy({ left: -itemWidth(), behavior: 'smooth' }));
+  const items = Array.from(track.querySelectorAll('.shot-item'));
+  const dotsWrap = document.getElementById('dots');
+  let current = 0, timer;
+
+  items.forEach((_, i) => {
+    const d = document.createElement('button');
+    d.className = 'carousel-dot' + (i === 0 ? ' active' : '');
+    d.setAttribute('aria-label', 'Go to slide ' + (i + 1));
+    d.addEventListener('click', () => { stopAuto(); goTo(i); startAuto(); });
+    dotsWrap.appendChild(d);
+  });
+
+  function goTo(i) {
+    current = (i + items.length) % items.length;
+    items[current].scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    dotsWrap.querySelectorAll('.carousel-dot').forEach((d, j) => d.classList.toggle('active', j === current));
+  }
+
+  function startAuto() { timer = setInterval(() => goTo(current + 1), 3000); }
+  function stopAuto()  { clearInterval(timer); }
+
+  document.getElementById('prev').addEventListener('click', () => { stopAuto(); goTo(current - 1); startAuto(); });
+  document.getElementById('next').addEventListener('click', () => { stopAuto(); goTo(current + 1); startAuto(); });
+
+  track.addEventListener('mouseenter', stopAuto);
+  track.addEventListener('mouseleave', startAuto);
+  track.addEventListener('touchstart', stopAuto, { passive: true });
+  track.addEventListener('touchend',   startAuto, { passive: true });
+
+  startAuto();
 </script>
 
 </body>

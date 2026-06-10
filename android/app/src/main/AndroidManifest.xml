@@ -12,10 +12,6 @@
     <!-- Network (Claude API) -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Foreground service for Recording -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-
     <uses-feature android:name="android.hardware.microphone" android:required="true" />
 
     <application
@@ -41,11 +37,11 @@
             android:name=".AdbReceiver"
             android:exported="false">
             <intent-filter>
-                <action android:name="com.daedalus.echo.SYNC" />
-                <action android:name="com.daedalus.echo.PROBE" />
-                <action android:name="com.daedalus.echo.PROBE2" />
-                <action android:name="com.daedalus.echo.PROBE_DELETE" />
-                <action android:name="com.daedalus.echo.ANALYZE" />
+                <action android:name="com.daedalusapps.echo.SYNC" />
+                <action android:name="com.daedalusapps.echo.PROBE" />
+                <action android:name="com.daedalusapps.echo.PROBE2" />
+                <action android:name="com.daedalusapps.echo.PROBE_DELETE" />
+                <action android:name="com.daedalusapps.echo.ANALYZE" />
             </intent-filter>
         </receiver>
 

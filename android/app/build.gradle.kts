@@ -36,11 +36,11 @@ val keystoreProps = Properties().apply {
 }
 
 android {
-    namespace   = "com.daedalus.echo"
+    namespace   = "com.daedalusapps.echo"
     compileSdk  = 35
 
     defaultConfig {
-        applicationId   = "com.daedalus.echo"
+        applicationId   = "com.daedalusapps.echo"
         minSdk          = 26
         targetSdk       = 35
         versionCode     = gitCommitCount

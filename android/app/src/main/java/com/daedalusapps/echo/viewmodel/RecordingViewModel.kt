@@ -14,6 +14,8 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.daedalusapps.echo.ai.activePrompt
+import com.daedalusapps.echo.ai.CHUNK_SUMMARY_PROMPT
+import com.daedalusapps.echo.ai.chunkTranscript
 import com.daedalusapps.echo.ai.EmbeddingService
 import com.daedalusapps.echo.ai.extractActionItems
 import com.daedalusapps.echo.ai.LocalLlmService
@@ -347,11 +349,20 @@ class RecordingViewModel @JvmOverloads constructor(
             }
             repo.save(note.copy(transcript = transcript))
 
-            // Step 2: Summarize + mind map with Gemma (Single Pass)
-            _syncProgress.value = "Analyzing with Gemma…"
+            // Step 2: Summarize + mind map with Gemma (chunked for long transcripts)
             llm.ensureLoaded()
-
-            val rawResponse = llm.generate(activePrompt(getApplication()), transcript)
+            val chunks = chunkTranscript(transcript)
+            val rawResponse = if (chunks.size == 1) {
+                _syncProgress.value = "Analyzing with Gemma…"
+                llm.generate(activePrompt(getApplication()), chunks[0])
+            } else {
+                val chunkSummaries = chunks.mapIndexed { i, chunk ->
+                    _syncProgress.value = "Analyzing part ${i + 1} of ${chunks.size}…"
+                    llm.generate(CHUNK_SUMMARY_PROMPT, chunk)
+                }
+                _syncProgress.value = "Synthesizing results…"
+                llm.generate(activePrompt(getApplication()), chunkSummaries.joinToString("\n\n"))
+            }
             val cleanJson = stripCodeFences(rawResponse)
             val analysis = SmartAnalysisParser.parse(cleanJson)
 

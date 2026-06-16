@@ -3,7 +3,10 @@ package com.daedalusapps.echo.ai
 import android.content.Context
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlin.coroutines.resume
 
 import android.util.Log
 
@@ -26,7 +29,7 @@ class LocalLlmService(private val context: Context) {
             try {
                 val optionsBuilder = LlmInference.LlmInferenceOptions.builder()
                     .setModelPath(file.absolutePath)
-                    .setMaxTokens(768)
+                    .setMaxTokens(4096)
                     .setMaxTopK(40)
                 if (model.useGpu) {
                     Log.i("DaedalusAI", "Requesting GPU backend for ${model.id}")
@@ -58,9 +61,22 @@ class LocalLlmService(private val context: Context) {
                 append("<start_of_turn>model\n")
             }
             try {
-                val response = llm.generateResponse(prompt)
-                Log.d("DaedalusAI", "Generation complete (response length: ${response.length})")
-                response
+                // generateResponse() crashes in MediaPipe 0.10.35 via nativePredictSync.
+                // generateResponseAsync uses a different native path that is stable.
+                // 3-minute timeout guards against the callback never firing on native error.
+                withTimeout(180_000L) {
+                    suspendCancellableCoroutine { cont ->
+                        val sb = StringBuilder()
+                        llm.generateResponseAsync(prompt) { partialResult, done ->
+                            partialResult?.let { sb.append(it) }
+                            if (done && cont.isActive) {
+                                val response = sb.toString()
+                                Log.d("DaedalusAI", "Generation complete (response length: ${response.length})")
+                                cont.resume(response)
+                            }
+                        }
+                    }
+                }
             } catch (e: Exception) {
                 Log.e("DaedalusAI", "Inference failed", e)
                 throw e

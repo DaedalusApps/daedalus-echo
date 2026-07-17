@@ -146,7 +146,6 @@ dependencies {
     implementation(files("libs/sherpa-onnx-$sherpaOnnxVersion.aar"))
 
     implementation(libs.documentfile)
-    implementation(libs.work.runtime)
 
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.test.manifest)

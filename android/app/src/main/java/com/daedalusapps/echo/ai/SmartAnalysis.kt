@@ -13,7 +13,7 @@ object SmartAnalysisParser {
     fun parse(rawResponse: String): SmartAnalysis {
         return try {
             val json = tryParseJson(rawResponse)
-            if (json != null && (json.title.isNotBlank() || json.fullSummary.isNotBlank() || json.mindMap.isNotBlank() || json.topics.isNotEmpty())) return json
+            if (json != null) return json
             tryParseMarkdown(rawResponse) ?: SmartAnalysis(fullSummary = rawResponse)
         } catch (e: Exception) {
             SmartAnalysis(fullSummary = rawResponse)

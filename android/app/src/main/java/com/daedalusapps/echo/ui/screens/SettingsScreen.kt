@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -16,7 +17,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.documentfile.provider.DocumentFile
 import com.daedalusapps.echo.ai.DownloadState
 import com.daedalusapps.echo.ai.EMBEDDING_MODEL_FILE
 import com.daedalusapps.echo.ai.EMBEDDING_MODEL_SIZE_BYTES
@@ -28,8 +31,31 @@ import com.daedalusapps.echo.ai.WHISPER_TOTAL_BYTES
 import com.daedalusapps.echo.ai.WhisperDownloader
 import com.daedalusapps.echo.ai.embeddingModelFile
 import com.daedalusapps.echo.ai.isWhisperReady
+import com.daedalusapps.echo.data.backup.BackupManager
+import com.daedalusapps.echo.data.backup.BackupPrefs
+import com.daedalusapps.echo.data.backup.BackupWorker
 import com.daedalusapps.echo.viewmodel.RecordingViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+private val BACKUP_INTERVAL_OPTIONS = listOf(
+    12L to "Every 12 hours",
+    24L to "Daily",
+    72L to "Every 3 days",
+    168L to "Weekly"
+)
+
+private fun backupIntervalLabel(hours: Long): String =
+    BACKUP_INTERVAL_OPTIONS.firstOrNull { it.first == hours }?.second ?: "Every $hours hours"
+
+private fun todoLookbackLabel(hours: Long): String =
+    LOOKBACK_OPTIONS.firstOrNull { it.hours == hours }?.label ?: "Last $hours hours"
+
+private fun formatLastBackupTime(millis: Long): String {
+    if (millis <= 0L) return "never"
+    return java.text.SimpleDateFormat("MMM d, yyyy h:mm a", java.util.Locale.getDefault()).format(java.util.Date(millis))
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,6 +70,26 @@ fun SettingsScreen(
     val snackbar = remember { SnackbarHostState() }
 
     var autoProcess by remember { mutableStateOf(prefs.getBoolean("auto_process", true)) }
+
+    var backupFolderUri by remember { mutableStateOf(prefs.getString(BackupPrefs.FOLDER_URI, null)) }
+    var backupIntervalHours by remember { mutableStateOf(prefs.getLong(BackupPrefs.INTERVAL_HOURS, BackupPrefs.DEFAULT_INTERVAL_HOURS)) }
+    var backupMaxCountText by remember { mutableStateOf(prefs.getInt(BackupPrefs.MAX_COUNT, BackupPrefs.DEFAULT_MAX_COUNT).toString()) }
+    var lastBackupTime by remember { mutableStateOf(prefs.getLong(BackupPrefs.LAST_BACKUP_TIME, 0L)) }
+    var lastBackupError by remember { mutableStateOf(prefs.getString(BackupPrefs.LAST_BACKUP_ERROR, null)) }
+    var backupIntervalMenuExpanded by remember { mutableStateOf(false) }
+    var todoLookbackHours by remember { mutableStateOf(prefs.getLong(TODO_LOOKBACK_HOURS_KEY, TODO_LOOKBACK_HOURS_DEFAULT)) }
+    var todoLookbackMenuExpanded by remember { mutableStateOf(false) }
+    var isBackingUp by remember { mutableStateOf(false) }
+    val backupFolderName = remember(backupFolderUri) {
+        backupFolderUri?.let { uriStr ->
+            try {
+                val uri = Uri.parse(uriStr)
+                DocumentFile.fromTreeUri(context, uri)?.name ?: Uri.decode(uri.lastPathSegment)
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
 
     val useBluetoothMic by recordingViewModel.useBluetoothMic.collectAsState()
 
@@ -92,7 +138,52 @@ fun SettingsScreen(
     val embeddingState by embeddingDownloader.state.collectAsState()
     val embeddingReady = remember(embeddingState) { embeddingModelFile(context).exists() }
 
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json"),
+        onResult = { uri ->
+            if (uri != null) {
+                scope.launch {
+                    try {
+                        withContext(Dispatchers.IO) { BackupManager(context).exportToUri(uri) }
+                        snackbar.showSnackbar("Backup exported successfully")
+                    } catch (e: Exception) {
+                        snackbar.showSnackbar("Export failed: ${e.message}")
+                    }
+                }
+            }
+        }
+    )
 
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+        onResult = { uri ->
+            if (uri != null) {
+                scope.launch {
+                    try {
+                        val count = withContext(Dispatchers.IO) { BackupManager(context).importFromUri(uri) }
+                        snackbar.showSnackbar("Imported $count recordings successfully")
+                    } catch (e: Exception) {
+                        snackbar.showSnackbar("Import failed: ${e.message}")
+                    }
+                }
+            }
+        }
+    )
+
+    val chooseBackupFolderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+        onResult = { uri ->
+            if (uri != null) {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+                prefs.edit().putString(BackupPrefs.FOLDER_URI, uri.toString()).apply()
+                backupFolderUri = uri.toString()
+                BackupWorker.schedule(context, backupIntervalHours)
+            }
+        }
+    )
 
     Scaffold(
         topBar = {
@@ -218,6 +309,171 @@ fun SettingsScreen(
                         checked = useBluetoothMic,
                         onCheckedChange = { toggleBluetoothMic() }
                     )
+                }
+
+                // Todo List
+                Text("Todo List", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                ExposedDropdownMenuBox(
+                    expanded = todoLookbackMenuExpanded,
+                    onExpandedChange = { todoLookbackMenuExpanded = it }
+                ) {
+                    OutlinedTextField(
+                        readOnly = true,
+                        value = todoLookbackLabel(todoLookbackHours),
+                        onValueChange = {},
+                        label = { Text("Default AI lookback") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = todoLookbackMenuExpanded) },
+                        modifier = Modifier
+                            .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                            .fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = todoLookbackMenuExpanded,
+                        onDismissRequest = { todoLookbackMenuExpanded = false }
+                    ) {
+                        LOOKBACK_OPTIONS.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option.label) },
+                                onClick = {
+                                    todoLookbackHours = option.hours
+                                    prefs.edit().putLong(TODO_LOOKBACK_HOURS_KEY, option.hours).apply()
+                                    todoLookbackMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // Backup & Recovery
+                Text("Backup & Recovery", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Export or import transcripts and summary metadata as a single JSON file.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = { exportLauncher.launch("daedalus_backup.json") },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Export Backup")
+                        }
+
+                        Button(
+                            onClick = { importLauncher.launch(arrayOf("application/json")) },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Import Backup")
+                        }
+                    }
+
+                    HorizontalDivider()
+
+                    Text("Automatic Backups", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Backup folder", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                backupFolderName ?: "Not set",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        OutlinedButton(onClick = { chooseBackupFolderLauncher.launch(null) }) {
+                            Text("Choose Backup Folder")
+                        }
+                    }
+
+                    ExposedDropdownMenuBox(
+                        expanded = backupIntervalMenuExpanded,
+                        onExpandedChange = { backupIntervalMenuExpanded = it }
+                    ) {
+                        OutlinedTextField(
+                            readOnly = true,
+                            value = backupIntervalLabel(backupIntervalHours),
+                            onValueChange = {},
+                            label = { Text("Backup interval (approximately)") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = backupIntervalMenuExpanded) },
+                            modifier = Modifier
+                                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                                .fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = backupIntervalMenuExpanded,
+                            onDismissRequest = { backupIntervalMenuExpanded = false }
+                        ) {
+                            BACKUP_INTERVAL_OPTIONS.forEach { (hours, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = {
+                                        backupIntervalHours = hours
+                                        prefs.edit().putLong(BackupPrefs.INTERVAL_HOURS, hours).apply()
+                                        if (backupFolderUri != null) {
+                                            BackupWorker.schedule(context, hours)
+                                        }
+                                        backupIntervalMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = backupMaxCountText,
+                        onValueChange = { text ->
+                            backupMaxCountText = text
+                            val n = text.toIntOrNull()
+                            if (n != null && n in 1..100) {
+                                prefs.edit().putInt(BackupPrefs.MAX_COUNT, n).apply()
+                            }
+                        },
+                        label = { Text("Max backups to keep") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Button(
+                        onClick = {
+                            isBackingUp = true
+                            scope.launch {
+                                val result = withContext(Dispatchers.IO) {
+                                    BackupManager(context).runAutoBackup()
+                                }
+                                lastBackupTime = prefs.getLong(BackupPrefs.LAST_BACKUP_TIME, lastBackupTime)
+                                lastBackupError = prefs.getString(BackupPrefs.LAST_BACKUP_ERROR, null)
+                                isBackingUp = false
+                                if (result.isSuccess) {
+                                    snackbar.showSnackbar("Backup completed successfully")
+                                } else {
+                                    snackbar.showSnackbar("Backup failed: ${result.exceptionOrNull()?.message}")
+                                }
+                            }
+                        },
+                        enabled = backupFolderUri != null && !isBackingUp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Back Up Now")
+                    }
+
+                    Text(
+                        "Last backup: ${formatLastBackupTime(lastBackupTime)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    lastBackupError?.let { error ->
+                        Text(
+                            error,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
 
                 // Privacy & Support

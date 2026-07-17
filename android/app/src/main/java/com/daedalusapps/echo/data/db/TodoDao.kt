@@ -14,9 +14,6 @@ interface TodoDao {
     @Query("SELECT * FROM todos ORDER BY isDone ASC, createdAt DESC")
     fun getAllFlow(): Flow<List<TodoItem>>
 
-    @Query("SELECT * FROM todos ORDER BY isDone ASC, createdAt DESC")
-    suspend fun getAll(): List<TodoItem>
-
     @Insert
     suspend fun insert(item: TodoItem): Long
 

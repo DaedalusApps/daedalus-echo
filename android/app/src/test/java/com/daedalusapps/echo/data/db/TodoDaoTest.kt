@@ -55,19 +55,19 @@ class TodoDaoTest {
     @Test
     fun updateChangesRow() = runBlocking {
         val id = dao.insert(TodoItem(text = "before"))
-        val loaded = dao.getAll().first { it.id == id }
+        val loaded = dao.getAllFlow().first().first { it.id == id }
         dao.update(loaded.copy(text = "after"))
 
-        assertEquals("after", dao.getAll().first { it.id == id }.text)
+        assertEquals("after", dao.getAllFlow().first().first { it.id == id }.text)
     }
 
     @Test
     fun deleteRemovesRow() = runBlocking {
         val id = dao.insert(TodoItem(text = "doomed"))
-        val loaded = dao.getAll().first { it.id == id }
+        val loaded = dao.getAllFlow().first().first { it.id == id }
         dao.delete(loaded)
 
-        assertTrue(dao.getAll().none { it.id == id })
+        assertTrue(dao.getAllFlow().first().none { it.id == id })
     }
 
     @Test
@@ -75,9 +75,9 @@ class TodoDaoTest {
         val id = dao.insert(TodoItem(text = "task", isDone = false))
 
         dao.setDone(id, true)
-        assertTrue(dao.getAll().first { it.id == id }.isDone)
+        assertTrue(dao.getAllFlow().first().first { it.id == id }.isDone)
 
         dao.setDone(id, false)
-        assertFalse(dao.getAll().first { it.id == id }.isDone)
+        assertFalse(dao.getAllFlow().first().first { it.id == id }.isDone)
     }
 }

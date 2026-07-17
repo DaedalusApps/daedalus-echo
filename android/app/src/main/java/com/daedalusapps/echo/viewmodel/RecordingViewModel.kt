@@ -54,7 +54,7 @@ class RecordingViewModel @JvmOverloads constructor(
     application: Application,
     private val db: AppDatabase = AppDatabase.getInstance(application),
     private val repo: RecordingRepository = RecordingRepository(db.recordingDao()),
-    private val llm: LocalLlmService = LocalLlmService(application),
+    private val llm: LocalLlmService = LocalLlmService.getInstance(application),
     private val transcriber: TranscriptionService = TranscriptionService(application),
     private val embedder: EmbeddingService = EmbeddingService(application)
 ) : AndroidViewModel(application) {
@@ -587,7 +587,6 @@ class RecordingViewModel @JvmOverloads constructor(
 
     override fun onCleared() {
         super.onCleared()
-        llm.close()
         embedder.close()
     }
 }

@@ -19,6 +19,8 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import com.daedalusapps.echo.data.backup.BackupPrefs
+import com.daedalusapps.echo.data.backup.BackupWorker
 import com.daedalusapps.echo.ui.NavGraph
 import com.daedalusapps.echo.ui.theme.DaedalusTheme
 import com.daedalusapps.echo.viewmodel.RecordingViewModel
@@ -53,6 +55,11 @@ class MainActivity : ComponentActivity() {
                 addAction("com.daedalusapps.echo.ANALYZE")
             }
             ContextCompat.registerReceiver(this, adbReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        }
+
+        val prefs = getSharedPreferences("daedalus_prefs", Context.MODE_PRIVATE)
+        if (!prefs.getString(BackupPrefs.FOLDER_URI, null).isNullOrBlank()) {
+            BackupWorker.schedule(this, prefs.getLong(BackupPrefs.INTERVAL_HOURS, BackupPrefs.DEFAULT_INTERVAL_HOURS))
         }
 
         setContent {

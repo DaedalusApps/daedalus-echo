@@ -62,9 +62,6 @@ import com.daedalusapps.echo.data.model.TodoItem
 import com.daedalusapps.echo.ui.components.SwipeToDeleteCard
 import com.daedalusapps.echo.viewmodel.TodoViewModel
 
-/** Sentinel hours value marking the "Custom" radio option (not a real lookback duration). */
-private const val CUSTOM_HOURS_SENTINEL = -2L
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TodoScreen(
@@ -218,7 +215,7 @@ private fun TodoSwipeToDeleteCard(
     onEditSave: (String) -> Unit
 ) {
     var showEditDialog by remember { mutableStateOf(false) }
-    var editText by remember(todo.id) { mutableStateOf(todo.text) }
+    var editText by remember(todo.id, showEditDialog) { mutableStateOf(todo.text) }
 
     if (showEditDialog) {
         AlertDialog(
@@ -318,12 +315,12 @@ private fun LookbackDialog(
     val initialSelection = remember { lookbackOptionFor(storedHours) }
 
     var selectedHours by remember {
-        mutableStateOf(if (initialSelection is LookbackSelection.Standard) initialSelection.hours else CUSTOM_HOURS_SENTINEL)
+        mutableStateOf(if (initialSelection is LookbackSelection.Standard) initialSelection.hours else null)
     }
     var customText by remember {
         mutableStateOf(if (initialSelection is LookbackSelection.Custom) initialSelection.hours.toString() else "")
     }
-    val isCustomSelected = selectedHours == CUSTOM_HOURS_SENTINEL
+    val isCustomSelected = selectedHours == null
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -351,12 +348,12 @@ private fun LookbackDialog(
                         .fillMaxWidth()
                         .selectable(
                             selected = isCustomSelected,
-                            onClick = { selectedHours = CUSTOM_HOURS_SENTINEL }
+                            onClick = { selectedHours = null }
                         )
                         .padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    RadioButton(selected = isCustomSelected, onClick = { selectedHours = CUSTOM_HOURS_SENTINEL })
+                    RadioButton(selected = isCustomSelected, onClick = { selectedHours = null })
                     Spacer(Modifier.width(8.dp))
                     Text("Custom")
                 }

@@ -25,7 +25,11 @@ fun parseTodoLines(raw: String): List<String> {
     val cleaned = stripCodeFences(raw)
     return cleaned.lines()
         .mapNotNull { line -> BULLET_LINE_REGEX.matchEntire(line)?.groupValues?.get(1)?.trim() }
-        .filter { it.isNotEmpty() && normalizeTodoText(it) !in NONE_SENTINELS }
+        .filter { item ->
+            // Non-empty normalized text also drops punctuation-only bullets like "- ----"
+            val norm = normalizeTodoText(item)
+            norm.isNotEmpty() && norm !in NONE_SENTINELS
+        }
         .filter { it.length in MIN_TODO_LENGTH..MAX_TODO_LENGTH }
         .take(MAX_TODO_COUNT)
 }

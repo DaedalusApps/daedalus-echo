@@ -11,6 +11,7 @@ import com.daedalusapps.echo.ai.normalizeTodoText
 import com.daedalusapps.echo.ai.parseTodoLines
 import com.daedalusapps.echo.data.db.AppDatabase
 import com.daedalusapps.echo.data.model.TodoItem
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,27 +51,23 @@ class TodoViewModel @JvmOverloads constructor(
     fun addTodo(text: String) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
-        viewModelScope.launch {
-            withContext(ioDispatcher) { db.todoDao().insert(TodoItem(text = trimmed)) }
-        }
+        launchIo { db.todoDao().insert(TodoItem(text = trimmed)) }
     }
 
     fun editTodo(item: TodoItem, newText: String) {
-        viewModelScope.launch {
-            withContext(ioDispatcher) { db.todoDao().update(item.copy(text = newText)) }
-        }
+        launchIo { db.todoDao().update(item.copy(text = newText)) }
     }
 
     fun deleteTodo(item: TodoItem) {
-        viewModelScope.launch {
-            withContext(ioDispatcher) { db.todoDao().delete(item) }
-        }
+        launchIo { db.todoDao().delete(item) }
     }
 
     fun toggleDone(item: TodoItem) {
-        viewModelScope.launch {
-            withContext(ioDispatcher) { db.todoDao().setDone(item.id, !item.isDone) }
-        }
+        launchIo { db.todoDao().setDone(item.id, !item.isDone) }
+    }
+
+    private fun launchIo(block: suspend () -> Unit) {
+        viewModelScope.launch { withContext(ioDispatcher) { block() } }
     }
 
     /**
@@ -91,6 +88,8 @@ class TodoViewModel @JvmOverloads constructor(
             _extractError.value = null
             try {
                 withContext(ioDispatcher) { extractCore(lookbackHours) }
+            } catch (e: CancellationException) {
+                throw e // don't surface normal coroutine cancellation as an error
             } catch (e: Exception) {
                 Log.e("TodoViewModel", "Todo extraction failed", e)
                 _extractError.value = e.message ?: "Todo extraction failed"

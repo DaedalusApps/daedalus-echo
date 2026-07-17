@@ -35,10 +35,12 @@ class RecordingDaoTest {
     fun getSince_returnsOnlyFreshRows() = runBlocking {
         val cutoff = 1_000L
         dao.upsert(Recording(filename = "before.mp3", createdAt = cutoff - 1))
+        dao.upsert(Recording(filename = "at.mp3", createdAt = cutoff))
         dao.upsert(Recording(filename = "after.mp3", createdAt = cutoff + 1))
 
         val result = dao.getSince(cutoff)
 
-        assertEquals(listOf("after.mp3"), result.map { it.filename })
+        // >= cutoff is inclusive; newest first
+        assertEquals(listOf("after.mp3", "at.mp3"), result.map { it.filename })
     }
 }

@@ -93,6 +93,12 @@ class TodoParserTest {
     }
 
     @Test
+    fun parseTodoLines_punctuationOnlyBullet_dropped() {
+        // Normalizes to empty -> must not become a garbage todo
+        assertEquals(emptyList<String>(), parseTodoLines("- ----\n- ???"))
+    }
+
+    @Test
     fun parseTodoLines_dropsTooShortItems() {
         // normalized item text "ok" is 2 chars, below the 3-char minimum
         assertEquals(emptyList<String>(), parseTodoLines("- ok"))

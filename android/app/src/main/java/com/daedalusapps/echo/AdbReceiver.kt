@@ -47,7 +47,7 @@ class AdbReceiver : BroadcastReceiver() {
     private suspend fun runAnalysis(app: Application, filename: String) {
         val repo = RecordingRepository(AppDatabase.getInstance(app).recordingDao())
         val transcriber = TranscriptionService(app)
-        val llm = LocalLlmService(app)
+        val llm = LocalLlmService.getInstance(app)
         val key = filename.removeSuffix(".mp3")
         try {
             val note = repo.get(key) ?: run {
@@ -98,8 +98,6 @@ class AdbReceiver : BroadcastReceiver() {
             Log.i("DaedalusAI", "Analysis complete for $filename: title='${analysis.title}'")
         } catch (e: Exception) {
             Log.e("DaedalusAI", "ADB analysis failed for $filename", e)
-        } finally {
-            llm.close()
         }
     }
 }

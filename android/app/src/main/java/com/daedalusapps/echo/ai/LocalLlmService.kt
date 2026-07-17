@@ -14,6 +14,7 @@ import android.util.Log
 
 class LocalLlmService(private val context: Context) {
 
+    @Volatile
     private var inference: LlmInference? = null
     private val mutex = Mutex()
 

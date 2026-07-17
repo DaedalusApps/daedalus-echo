@@ -24,6 +24,9 @@ interface RecordingDao {
     ORDER BY createdAt DESC""")
     fun searchFlow(q: String): Flow<List<Recording>>
 
+    @Query("SELECT * FROM recordings WHERE createdAt >= :cutoff ORDER BY createdAt DESC")
+    suspend fun getSince(cutoff: Long): List<Recording>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(recording: Recording)
 

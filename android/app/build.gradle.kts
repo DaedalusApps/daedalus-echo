@@ -90,6 +90,25 @@ android {
             excludes += "META-INF/LICENSE-notice.md"
         }
     }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
+
+    // Expose the exported Room schema JSONs to Robolectric MigrationTestHelper.
+    // Robolectric reads the merged debug assets (not the test sourceSet), so the
+    // schemas are attached to the debug variant — they stay out of the release APK.
+    sourceSets.getByName("debug") {
+        assets.srcDir(files("$projectDir/schemas"))
+    }
+}
+
+kapt {
+    arguments {
+        arg("room.schemaLocation", "$projectDir/schemas")
+    }
 }
 
 dependencies {
@@ -135,6 +154,10 @@ dependencies {
     testImplementation(libs.mockk)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.androidx.arch.core.testing)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.room.testing)
+    testImplementation(libs.androidx.test.core)
+    testImplementation("org.json:json:20240303")
 
     androidTestImplementation(libs.androidx.test.ext)
     androidTestImplementation(libs.androidx.test.runner)

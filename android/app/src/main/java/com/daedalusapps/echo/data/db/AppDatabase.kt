@@ -9,7 +9,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.daedalusapps.echo.data.model.Recording
 
-@Database(entities = [Recording::class], version = 6, exportSchema = false)
+@Database(entities = [Recording::class], version = 6, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 

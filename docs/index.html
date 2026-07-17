@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Daedalus Echo — Private AI Voice Notes</title>
   <meta name="description" content="Record, transcribe, and analyze your voice notes entirely on-device. No cloud. No subscriptions. 100% private." />
+  <link rel="icon" type="image/png" href="icon_512.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet" />
@@ -19,13 +20,13 @@
       --violet:    #818cf8;
       --violet2:   #a78bfa;
       --cyan:      #67e8f9;
+      --emerald:   #34d399;
       --text:      #e2e8f0;
       --muted:     #64748b;
       --muted2:    #94a3b8;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     html { scroll-behavior: smooth; }
 
     body {
@@ -36,7 +37,6 @@
       overflow-x: hidden;
     }
 
-    /* ─── NOISE OVERLAY ─── */
     body::before {
       content: '';
       position: fixed;
@@ -47,7 +47,7 @@
       z-index: 0;
     }
 
-    /* ─── NAV ─── */
+    /* NAV */
     nav {
       position: sticky;
       top: 0;
@@ -62,12 +62,20 @@
       border-bottom: 1px solid var(--border);
     }
     .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
       font-family: 'Syne', sans-serif;
       font-weight: 800;
       font-size: 1.1rem;
       color: #fff;
       letter-spacing: -0.3px;
       text-decoration: none;
+    }
+    .nav-logo img {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
     }
     .nav-logo em {
       font-style: normal;
@@ -96,11 +104,11 @@
     }
     .nav-cta:hover { background: var(--indigo2) !important; }
 
-    /* ─── HERO ─── */
+    /* HERO */
     .hero {
       position: relative;
       text-align: center;
-      padding: 160px 24px 140px;
+      padding: 120px 24px 100px;
       overflow: hidden;
     }
     .hero-glow {
@@ -123,28 +131,37 @@
       background: radial-gradient(ellipse, rgba(103,232,249,0.06) 0%, transparent 70%);
       pointer-events: none;
     }
+    .hero-icon {
+      position: relative;
+      display: block;
+      width: 96px;
+      height: 96px;
+      border-radius: 24px;
+      margin: 0 auto 32px;
+      box-shadow: 0 8px 40px rgba(79,70,229,0.4), 0 0 0 1px rgba(129,140,248,0.15);
+    }
     .hero-badge {
       position: relative;
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      background: rgba(79,70,229,0.12);
-      border: 1px solid rgba(99,102,241,0.3);
-      color: var(--violet2);
+      background: rgba(52,211,153,0.1);
+      border: 1px solid rgba(52,211,153,0.3);
+      color: var(--emerald);
       font-size: 0.78rem;
       font-weight: 500;
       letter-spacing: 0.8px;
       text-transform: uppercase;
       padding: 6px 16px;
       border-radius: 999px;
-      margin-bottom: 48px;
+      margin-bottom: 40px;
     }
     .hero-badge::before {
       content: '';
       width: 6px; height: 6px;
-      background: var(--cyan);
+      background: var(--emerald);
       border-radius: 50%;
-      box-shadow: 0 0 8px var(--cyan);
+      box-shadow: 0 0 8px var(--emerald);
       animation: pulse 2s ease-in-out infinite;
     }
     @keyframes pulse {
@@ -155,7 +172,7 @@
       position: relative;
       font-family: 'Syne', sans-serif;
       font-weight: 800;
-      margin-bottom: 40px;
+      margin-bottom: 32px;
     }
     .hero h1 .h1-main {
       display: block;
@@ -185,16 +202,14 @@
       font-weight: 300;
       color: var(--muted2);
       max-width: 520px;
-      margin: 0 auto 56px;
+      margin: 0 auto 48px;
       line-height: 1.75;
     }
     .hero-actions { position: relative; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
-    .btn-primary {
+    .btn-primary, .btn-secondary {
       display: inline-flex;
       align-items: center;
       gap: 10px;
-      background: var(--indigo);
-      color: #fff;
       font-family: 'DM Sans', sans-serif;
       font-weight: 500;
       padding: 14px 28px;
@@ -202,6 +217,10 @@
       text-decoration: none;
       font-size: 0.95rem;
       transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+    }
+    .btn-primary {
+      background: var(--indigo);
+      color: #fff;
       box-shadow: 0 0 40px rgba(79,70,229,0.35);
     }
     .btn-primary:hover {
@@ -209,7 +228,17 @@
       transform: translateY(-1px);
       box-shadow: 0 0 50px rgba(79,70,229,0.5);
     }
-    .btn-primary svg { flex-shrink: 0; }
+    .btn-secondary {
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover {
+      background: rgba(255,255,255,0.1);
+      border-color: rgba(255,255,255,0.15);
+      transform: translateY(-1px);
+    }
+    .btn-primary svg, .btn-secondary svg { flex-shrink: 0; }
     .hero-req {
       position: relative;
       margin-top: 20px;
@@ -218,7 +247,66 @@
       letter-spacing: 0.3px;
     }
 
-    /* ─── SECTION LABEL ─── */
+    /* BETA CTA */
+    .beta-section {
+      padding: 0 24px 80px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .beta-card {
+      background: linear-gradient(135deg, rgba(52,211,153,0.08) 0%, rgba(79,70,229,0.08) 100%);
+      border: 1px solid rgba(52,211,153,0.2);
+      border-radius: 20px;
+      padding: 40px 48px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .beta-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(52,211,153,0.4), transparent);
+    }
+    .beta-card h2 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 10px;
+      letter-spacing: -0.3px;
+    }
+    .beta-card p {
+      color: var(--muted2);
+      font-size: 0.95rem;
+      font-weight: 300;
+      max-width: 480px;
+      margin: 0 auto 24px;
+      line-height: 1.7;
+    }
+    .btn-beta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(52,211,153,0.15);
+      border: 1px solid rgba(52,211,153,0.35);
+      color: var(--emerald);
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 500;
+      padding: 12px 28px;
+      border-radius: 10px;
+      text-decoration: none;
+      font-size: 0.95rem;
+      transition: background 0.2s, transform 0.15s, border-color 0.2s;
+    }
+    .btn-beta:hover {
+      background: rgba(52,211,153,0.25);
+      border-color: rgba(52,211,153,0.5);
+      transform: translateY(-1px);
+    }
+
+    /* SECTION LABEL */
     .section-label {
       font-size: 0.72rem;
       font-weight: 600;
@@ -240,15 +328,16 @@
       font-size: 1rem;
       font-weight: 300;
       max-width: 480px;
+      margin: 0 auto;
     }
 
-    /* ─── FEATURES ─── */
+    /* FEATURES */
     .features-section {
       padding: 80px 24px;
       max-width: 1080px;
       margin: 0 auto;
     }
-    .features-header { margin-bottom: 48px; }
+    .features-header { margin-bottom: 48px; text-align: center; }
     .features-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -293,13 +382,14 @@
     }
     .feature-card p { color: var(--muted); font-size: 0.9rem; line-height: 1.65; font-weight: 300; }
 
-    /* ─── SCREENSHOTS ─── */
+    /* SCREENSHOTS */
     .screenshots-section {
       padding: 80px 24px 100px;
     }
     .screenshots-header {
       max-width: 760px;
       margin: 0 auto 56px;
+      text-align: center;
     }
     .shots-grid {
       display: grid;
@@ -358,7 +448,7 @@
       text-align: center;
     }
 
-    /* ─── PRIVACY ─── */
+    /* PRIVACY */
     .privacy-section {
       padding: 80px 24px;
       max-width: 1080px;
@@ -406,13 +496,14 @@
     }
     .pill:hover { background: rgba(79,70,229,0.2); border-color: rgba(99,102,241,0.4); }
 
-    /* ─── REQUIREMENTS ─── */
+    /* REQUIREMENTS */
     .requirements-section {
       padding: 40px 24px 80px;
       max-width: 720px;
       margin: 0 auto;
+      text-align: center;
     }
-    .req-list { list-style: none; margin-top: 28px; }
+    .req-list { text-align: left; list-style: none; margin-top: 28px; }
     .req-list li {
       display: flex;
       gap: 14px;
@@ -425,14 +516,14 @@
     }
     .req-list li:last-child { border-bottom: none; }
     .req-list li::before {
-      content: "›";
+      content: "\203A";
       color: var(--indigo2);
       font-size: 1.1rem;
       flex-shrink: 0;
       margin-top: 1px;
     }
 
-    /* ─── FOOTER ─── */
+    /* FOOTER */
     footer {
       border-top: 1px solid var(--border);
       padding: 28px 48px;
@@ -461,7 +552,7 @@
     }
     .footer-links a:hover { color: var(--muted2); }
 
-    /* ─── SCROLL REVEAL ─── */
+    /* SCROLL REVEAL */
     .reveal {
       opacity: 0;
       transform: translateY(24px);
@@ -471,32 +562,45 @@
     .reveal-delay-1 { transition-delay: 0.1s; }
     .reveal-delay-2 { transition-delay: 0.2s; }
     .reveal-delay-3 { transition-delay: 0.3s; }
-    .reveal-delay-4 { transition-delay: 0.4s; }
 
     @media (max-width: 640px) {
-      nav { padding: 16px 20px; }
-      .nav-links { gap: 16px; }
+      nav { padding: 14px 16px; }
+      .nav-links { gap: 12px; }
+      .nav-links a:not(.nav-cta) { display: none; }
       .hero { padding: 80px 20px 60px; }
+      .hero-icon { width: 72px; height: 72px; border-radius: 18px; }
+      .hero-actions { flex-direction: column; align-items: center; }
+      .btn-primary, .btn-secondary { width: 100%; max-width: 280px; justify-content: center; }
+      .beta-card { padding: 32px 20px; }
+      .beta-card h2 { font-size: 1.25rem; }
       .privacy-inner { padding: 36px 24px; }
-      footer { padding: 24px 20px; }
+      .shots-grid { grid-template-columns: repeat(2, 160px); gap: 16px 12px; }
+      .shot-item:nth-child(3n+2) { padding-top: 0; }
+      footer { padding: 24px 20px; flex-direction: column; text-align: center; }
+      .footer-links { justify-content: center; }
     }
   </style>
 </head>
 <body>
 
 <nav>
-  <a href="#" class="nav-logo">Daedalus <em>Echo</em></a>
+  <a href="#" class="nav-logo">
+    <img src="icon_512.png" alt="Daedalus Echo icon" />
+    Daedalus <em>Echo</em>
+  </a>
   <div class="nav-links">
+    <a href="#features">Features</a>
     <a href="privacy.html">Privacy</a>
     <a href="https://github.com/DaedalusApps/daedalus-echo">GitHub</a>
-    <a href="https://play.google.com/store/apps/details?id=com.daedalus.echo" class="nav-cta">Get the app</a>
+    <a href="#beta" class="nav-cta">Join Beta</a>
   </div>
 </nav>
 
 <section class="hero">
   <div class="hero-glow"></div>
   <div class="hero-glow-2"></div>
-  <div class="hero-badge">Now on Google Play</div>
+  <img src="icon_512.png" alt="Daedalus Echo" class="hero-icon" />
+  <div class="hero-badge">Beta &mdash; Now accepting testers</div>
   <h1>
     <span class="h1-main">Your voice.</span>
     <span class="h1-tag grad">Understood locally.</span>
@@ -506,15 +610,30 @@
     No cloud. No subscriptions. No data ever leaves your phone.
   </p>
   <div class="hero-actions">
-    <a href="https://play.google.com/store/apps/details?id=com.daedalus.echo" class="btn-primary">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 20.5v-17c0-.83 1.01-1.3 1.67-.75l13 8.5c.59.38.59 1.12 0 1.5l-13 8.5C3.01 21.8 3 21.33 3 20.5z"/></svg>
-      Get it on Google Play
+    <a href="#beta" class="btn-primary">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      Join the Beta
+    </a>
+    <a href="https://github.com/DaedalusApps/daedalus-echo" class="btn-secondary">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+      View on GitHub
     </a>
   </div>
-  <p class="hero-req">Android 8.0+ · ARM64 · 4 GB RAM</p>
+  <p class="hero-req">Android 8.0+ &middot; ARM64 &middot; 4 GB RAM</p>
 </section>
 
-<section class="features-section">
+<section class="beta-section reveal" id="beta">
+  <div class="beta-card">
+    <h2>Get early access</h2>
+    <p>Daedalus Echo is in beta. Email us to be added as a tester on Google Play &mdash; you'll get the latest builds before anyone else.</p>
+    <a href="mailto:beta@echo.daedalusapps.com?subject=Daedalus%20Echo%20Beta%20Access&body=Hi%2C%20I'd%20like%20to%20join%20the%20Daedalus%20Echo%20beta.%20My%20Google%20Play%20email%20is%3A%20" class="btn-beta">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      beta@echo.daedalusapps.com
+    </a>
+  </div>
+</section>
+
+<section class="features-section" id="features">
   <div class="features-header reveal">
     <p class="section-label">What it does</p>
     <h2 class="section-heading">Everything on your device</h2>
@@ -522,32 +641,32 @@
   </div>
   <div class="features-grid">
     <div class="feature-card reveal reveal-delay-1">
-      <div class="feature-icon">🎙</div>
+      <div class="feature-icon">&#x1F399;</div>
       <h3>Record</h3>
       <p>Capture audio with your built-in microphone or a paired Bluetooth headset. Stored locally and securely.</p>
     </div>
     <div class="feature-card reveal reveal-delay-2">
-      <div class="feature-icon">📝</div>
+      <div class="feature-icon">&#x1F4DD;</div>
       <h3>Transcribe</h3>
-      <p>Powered by Whisper via sherpa-onnx, every recording becomes searchable text — completely offline.</p>
+      <p>Powered by Whisper via sherpa-onnx, every recording becomes searchable text &mdash; completely offline.</p>
     </div>
     <div class="feature-card reveal reveal-delay-3">
-      <div class="feature-icon">🧠</div>
+      <div class="feature-icon">&#x1F9E0;</div>
       <h3>AI Summaries</h3>
       <p>Gemma 3 1B runs entirely on-device to generate titles, summaries, key topics, and mind maps per note.</p>
     </div>
     <div class="feature-card reveal reveal-delay-1">
-      <div class="feature-icon">💬</div>
+      <div class="feature-icon">&#x1F4AC;</div>
       <h3>Ask Your Notes</h3>
       <p>Ask a natural-language question across your entire library. Semantic search finds the answer, on-device.</p>
     </div>
     <div class="feature-card reveal reveal-delay-2">
-      <div class="feature-icon">🗺</div>
+      <div class="feature-icon">&#x1F5FA;</div>
       <h3>Knowledge Graph</h3>
-      <p>Visualize semantic connections across all your recordings — see which ideas appear together over time.</p>
+      <p>Visualize semantic connections across all your recordings &mdash; see which ideas appear together over time.</p>
     </div>
     <div class="feature-card reveal reveal-delay-3">
-      <div class="feature-icon">🔍</div>
+      <div class="feature-icon">&#x1F50D;</div>
       <h3>Search</h3>
       <p>Instantly search across all transcripts and summaries. Find any recording by content, not just title.</p>
     </div>
@@ -562,38 +681,38 @@
   </div>
   <div class="shots-grid reveal">
     <div class="shot-item">
-      <div class="phone-frame"><img src="screenshots/01_home_ask.png" alt="Ask your notes" loading="lazy" /></div>
+      <div class="phone-frame"><img src="screenshots/01_home_askscreen.png" alt="Ask your notes" loading="lazy" /></div>
       <span class="shot-caption">Ask anything across all notes</span>
     </div>
     <div class="shot-item">
-      <div class="phone-frame"><img src="screenshots/02_recordings.png" alt="Recordings list" loading="lazy" /></div>
+      <div class="phone-frame"><img src="screenshots/02_recordings_list.png" alt="Recordings list" loading="lazy" /></div>
       <span class="shot-caption">All your recordings</span>
     </div>
     <div class="shot-item">
-      <div class="phone-frame"><img src="screenshots/03_transcript.png" alt="Full transcript" loading="lazy" /></div>
-      <span class="shot-caption">Full transcript</span>
-    </div>
-    <div class="shot-item">
-      <div class="phone-frame"><img src="screenshots/04_summary.png" alt="AI summary" loading="lazy" /></div>
+      <div class="phone-frame"><img src="screenshots/04_note_summary.png" alt="AI summary" loading="lazy" /></div>
       <span class="shot-caption">AI-generated summary</span>
     </div>
     <div class="shot-item">
-      <div class="phone-frame"><img src="screenshots/05_mindmap.png" alt="Mind map" loading="lazy" /></div>
-      <span class="shot-caption">Per-note mind map</span>
+      <div class="phone-frame"><img src="screenshots/06_todos.png" alt="Todo list" loading="lazy" /></div>
+      <span class="shot-caption">Action items, tracked automatically</span>
     </div>
     <div class="shot-item">
-      <div class="phone-frame"><img src="screenshots/07_global_mindmap.png" alt="Knowledge graph" loading="lazy" /></div>
+      <div class="phone-frame"><img src="screenshots/09_global_mindmap.png" alt="Knowledge graph" loading="lazy" /></div>
       <span class="shot-caption">Global knowledge graph</span>
+    </div>
+    <div class="shot-item">
+      <div class="phone-frame"><img src="screenshots/10_settings_backup.png" alt="Backup and recovery settings" loading="lazy" /></div>
+      <span class="shot-caption">Automatic backups, your data stays yours</span>
     </div>
   </div>
 </section>
 
 <section class="privacy-section">
   <div class="privacy-inner reveal">
-    <span class="privacy-icon">🔒</span>
-    <p class="section-label" style="justify-content:center;display:flex;">Privacy by design</p>
-    <h2 class="section-heading" style="margin:8px auto 12px;">Your data never leaves your phone</h2>
-    <p class="section-sub" style="margin:0 auto;">All AI processing happens 100% locally. No internet required after the initial model download. No accounts. No telemetry. No exceptions.</p>
+    <span class="privacy-icon">&#x1F512;</span>
+    <p class="section-label">Privacy by design</p>
+    <h2 class="section-heading">Your data never leaves your phone</h2>
+    <p class="section-sub">All AI processing happens 100% locally. No internet required after the initial model download. No accounts. No telemetry. No exceptions.</p>
     <div class="privacy-pills">
       <span class="pill">No cloud processing</span>
       <span class="pill">No accounts required</span>
@@ -610,15 +729,15 @@
   <h2 class="section-heading">What you need</h2>
   <ul class="req-list">
     <li>Android 8.0 (API 26) or higher, ARM64</li>
-    <li>4 GB RAM minimum — 6 GB+ recommended for best performance</li>
+    <li>4 GB RAM minimum &mdash; 6 GB+ recommended for best performance</li>
     <li>~770 MB free storage for AI models, downloaded once on first launch</li>
     <li>Vulkan 1.1+ recommended for GPU acceleration</li>
-    <li>Tested on Samsung Galaxy S24 Ultra · Compatible with most mid-range and flagship Android devices from 2019 onward</li>
+    <li>Tested on Samsung Galaxy S24 Ultra &middot; Compatible with most mid-range and flagship Android devices from 2019 onward</li>
   </ul>
 </section>
 
 <footer>
-  <span class="footer-logo">Daedalus <em>Echo</em> · © 2026 DaedalusApps</span>
+  <span class="footer-logo">Daedalus <em>Echo</em> &middot; &copy; 2026 DaedalusApps</span>
   <div class="footer-links">
     <a href="privacy.html">Privacy Policy</a>
     <a href="mailto:comms@daedalusapps.com">Contact</a>
@@ -627,12 +746,10 @@
 </footer>
 
 <script>
-  // Scroll reveal
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } });
   }, { threshold: 0.12 });
   document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
-
 </script>
 
 </body>

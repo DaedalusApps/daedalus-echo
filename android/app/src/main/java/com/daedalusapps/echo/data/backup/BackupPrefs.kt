@@ -6,6 +6,8 @@ package com.daedalusapps.echo.data.backup
  * MainActivity, and SettingsScreen so these literals live in exactly one place.
  */
 object BackupPrefs {
+    const val PREFS_NAME = "daedalus_prefs"
+
     const val FOLDER_URI = "backup_folder_uri"
     const val MAX_COUNT = "backup_max_count"
     const val INTERVAL_HOURS = "backup_interval_hours"

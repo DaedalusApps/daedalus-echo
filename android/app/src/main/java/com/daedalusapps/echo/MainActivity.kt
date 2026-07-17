@@ -57,7 +57,7 @@ class MainActivity : ComponentActivity() {
             ContextCompat.registerReceiver(this, adbReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         }
 
-        val prefs = getSharedPreferences("daedalus_prefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences(BackupPrefs.PREFS_NAME, Context.MODE_PRIVATE)
         if (!prefs.getString(BackupPrefs.FOLDER_URI, null).isNullOrBlank()) {
             BackupWorker.schedule(this, prefs.getLong(BackupPrefs.INTERVAL_HOURS, BackupPrefs.DEFAULT_INTERVAL_HOURS))
         }

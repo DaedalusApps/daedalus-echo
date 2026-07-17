@@ -32,7 +32,7 @@ class BackupManager(
     suspend fun buildBackupJson(): JSONObject {
         val recordings = repo.allRecordings.first()
         val todos = db.todoDao().getAllFlow().first()
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = context.getSharedPreferences(BackupPrefs.PREFS_NAME, Context.MODE_PRIVATE)
 
         return JSONObject().apply {
             put("backupVersion", 2)
@@ -80,9 +80,10 @@ class BackupManager(
             put("todos", todosArr)
 
             val settings = JSONObject()
+            val allPrefs = prefs.all
             SETTINGS_KEYS.forEach { key ->
-                if (prefs.contains(key)) {
-                    settings.put(key, prefs.all[key])
+                if (allPrefs.containsKey(key)) {
+                    settings.put(key, allPrefs[key])
                 }
             }
             put("settings", settings)
@@ -226,7 +227,7 @@ class BackupManager(
      * the `last_backup_error` pref.
      */
     suspend fun runAutoBackup(): Result<Unit> {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = context.getSharedPreferences(BackupPrefs.PREFS_NAME, Context.MODE_PRIVATE)
         try {
             val storedUri = prefs.getString(BackupPrefs.FOLDER_URI, null)
             if (storedUri.isNullOrBlank()) {
@@ -265,9 +266,9 @@ class BackupManager(
             }
 
             val maxCount = prefs.getInt(BackupPrefs.MAX_COUNT, BackupPrefs.DEFAULT_MAX_COUNT)
-            val names = dir.listFiles().mapNotNull { it.name }
-            val toDelete = selectBackupsToDelete(names, maxCount)
-            dir.listFiles().filter { it.name in toDelete }.forEach { it.delete() }
+            val existingFiles = dir.listFiles()
+            val toDelete = selectBackupsToDelete(existingFiles.mapNotNull { it.name }, maxCount)
+            existingFiles.filter { it.name in toDelete }.forEach { it.delete() }
 
             prefs.edit()
                 .putLong(BackupPrefs.LAST_BACKUP_TIME, System.currentTimeMillis())
@@ -293,7 +294,7 @@ class BackupManager(
      */
     private fun applySettings(settings: JSONObject?) {
         if (settings == null) return
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = context.getSharedPreferences(BackupPrefs.PREFS_NAME, Context.MODE_PRIVATE)
         val editor = prefs.edit()
 
         if (settings.has("use_bluetooth_mic")) editor.putBoolean("use_bluetooth_mic", settings.optBoolean("use_bluetooth_mic"))
@@ -307,8 +308,6 @@ class BackupManager(
     }
 
     companion object {
-        private const val PREFS_NAME = "daedalus_prefs"
-
         private val BACKUP_FILENAME_REGEX = Regex("daedalus_backup_.*\\.json")
 
         private val SETTINGS_KEYS = listOf(

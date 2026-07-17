@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Fullscreen
@@ -80,7 +81,8 @@ fun AskHomeScreen(
     onNavigateToNote: (String) -> Unit,
     onNavigateToRecordings: () -> Unit,
     onNavigateToExpandedMap: () -> Unit,
-    onNavigateToSettings: () -> Unit
+    onNavigateToSettings: () -> Unit,
+    onNavigateToTodos: () -> Unit
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -142,6 +144,9 @@ fun AskHomeScreen(
             TopAppBar(
                 title = { Text("Daedalus Echo") },
                 actions = {
+                    IconButton(onClick = onNavigateToTodos) {
+                        Icon(Icons.Default.Checklist, contentDescription = "Todos")
+                    }
                     IconButton(onClick = onNavigateToRecordings) {
                         Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Recordings")
                     }

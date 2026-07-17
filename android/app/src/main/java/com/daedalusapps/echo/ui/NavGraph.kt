@@ -16,12 +16,15 @@ import com.daedalusapps.echo.ui.screens.PromptEditorScreen
 import com.daedalusapps.echo.ui.screens.RecordingsScreen
 import com.daedalusapps.echo.ui.screens.SettingsScreen
 import com.daedalusapps.echo.ui.screens.SplashScreen
+import com.daedalusapps.echo.ui.screens.TodoScreen
 import com.daedalusapps.echo.viewmodel.RecordingViewModel
+import com.daedalusapps.echo.viewmodel.TodoViewModel
 
 @Composable
 fun NavGraph(
     navController: NavHostController,
-    recordingViewModel: RecordingViewModel
+    recordingViewModel: RecordingViewModel,
+    todoViewModel: TodoViewModel
 ) {
     NavHost(navController = navController, startDestination = "splash") {
 
@@ -49,7 +52,15 @@ fun NavGraph(
                 onNavigateToNote = { filename -> navController.navigate("note/$filename") },
                 onNavigateToRecordings = { navController.navigate("recordings") },
                 onNavigateToExpandedMap = { navController.navigate("global_mind_map") },
-                onNavigateToSettings = { navController.navigate("settings") }
+                onNavigateToSettings = { navController.navigate("settings") },
+                onNavigateToTodos = { navController.navigate("todos") }
+            )
+        }
+
+        composable("todos") {
+            TodoScreen(
+                todoViewModel = todoViewModel,
+                onBack = { navController.popBackStack() }
             )
         }
 

@@ -24,10 +24,12 @@ import com.daedalusapps.echo.data.backup.BackupWorker
 import com.daedalusapps.echo.ui.NavGraph
 import com.daedalusapps.echo.ui.theme.DaedalusTheme
 import com.daedalusapps.echo.viewmodel.RecordingViewModel
+import com.daedalusapps.echo.viewmodel.TodoViewModel
 
 class MainActivity : ComponentActivity() {
 
     private val recordingViewModel: RecordingViewModel by viewModels()
+    private val todoViewModel: TodoViewModel by viewModels()
 
     private val adbReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -68,7 +70,8 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
                     NavGraph(
                         navController = navController,
-                        recordingViewModel = recordingViewModel
+                        recordingViewModel = recordingViewModel,
+                        todoViewModel = todoViewModel
                     )
                 }
             }

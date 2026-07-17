@@ -13,7 +13,7 @@ object SmartAnalysisParser {
     fun parse(rawResponse: String): SmartAnalysis {
         return try {
             val json = tryParseJson(rawResponse)
-            if (json != null && (json.title.isNotBlank() || json.fullSummary.isNotBlank() || json.mindMap.isNotBlank())) return json
+            if (json != null && (json.title.isNotBlank() || json.fullSummary.isNotBlank() || json.mindMap.isNotBlank() || json.topics.isNotEmpty())) return json
             tryParseMarkdown(rawResponse) ?: SmartAnalysis(fullSummary = rawResponse)
         } catch (e: Exception) {
             SmartAnalysis(fullSummary = rawResponse)
@@ -28,12 +28,12 @@ object SmartAnalysisParser {
         val mindMap = extractJsonField(raw, "mindMap")
         val topicsStr = extractJsonField(raw, "topics")
 
-        if (title.isBlank() && fullSummary.isBlank() && mindMap.isBlank()) return null
-
         val topics = Regex(""""([^"\\]*)"""").findAll(topicsStr)
             .map { it.groupValues[1] }
             .filter { it.isNotBlank() }
             .toList()
+
+        if (title.isBlank() && fullSummary.isBlank() && mindMap.isBlank() && topics.isEmpty()) return null
 
         val mindMapNormalized = when {
             mindMap.trimStart().startsWith("{") || mindMap.contains("\"item\"") || mindMap.contains("\"sub\"") ->

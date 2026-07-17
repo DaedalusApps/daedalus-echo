@@ -1,8 +1,21 @@
 package com.daedalusapps.echo.ai
 
-const val TODO_EXTRACTION_PROMPT = """From the notes below, extract concrete action items and tasks the speaker needs to do.
+const val TODO_EXTRACTION_PROMPT = """From the notes below, extract action items: things the SPEAKER commits to do or says they must do in the future.
 
-Return ONLY a bullet list, one task per line starting with "- ". Each task must be short (under 15 words), specific, and actionable. Do not repeat tasks from the "Already tracked" list. If there are no new tasks, return "- none".
+NOT action items: narration of what the speaker is currently doing, comments about the recording or app itself, past events, opinions.
+
+Examples:
+Notes: "I need to pick up dry cleaning and call the dentist to reschedule."
+- Pick up dry cleaning
+- Call dentist to reschedule
+
+Notes: "This is me testing the app, reading output from the agent to check transcription quality."
+- none
+
+Notes: "Just narrating my day here. Also remember to pay the electric bill before Friday."
+- Pay electric bill before Friday
+
+Return ONLY a bullet list, one task per line starting with "- ". Each task must be short (under 15 words), specific, and actionable. Do not repeat tasks from the "Already tracked" list. If there are no new tasks, return exactly "- none".
 
 Notes:"""
 

@@ -67,6 +67,10 @@ android {
             else
                 signingConfigs.getByName("debug")
         }
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
     }
 
     compileOptions {

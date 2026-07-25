@@ -1,4 +1,5 @@
 # Daedalus Echo
+[![CI](https://github.com/DaedalusApps/daedalus-echo/actions/workflows/ci.yml/badge.svg)](https://github.com/DaedalusApps/daedalus-echo/actions/workflows/ci.yml)
 
 A standalone Android voice recorder, transcription, and AI analysis application. Records audio directly (using the built-in or Bluetooth microphone), transcribes recordings on-device with Whisper, generates smart summaries and interactive mind maps with Gemma 3, and lets you ask semantic questions across your entire library — all running 100% locally on-device.
 

@@ -2,6 +2,8 @@
 
 A standalone Android voice recorder, transcription, and AI analysis application. Records audio directly (using the built-in or Bluetooth microphone), transcribes recordings on-device with Whisper, generates smart summaries and interactive mind maps with Gemma 3, and lets you ask semantic questions across your entire library — all running 100% locally on-device.
 
+**[Visit the project landing page](https://echo.daedalusapps.com)** · [Privacy Policy](https://echo.daedalusapps.com/privacy.html)
+
 ## Features
 
 - **Local Voice Recording** — Record high-quality audio directly in the app using the device microphone or a Bluetooth headset (SCO)
@@ -11,6 +13,14 @@ A standalone Android voice recorder, transcription, and AI analysis application.
 - **Knowledge Graph** — Visualize semantic connections and shared topics across all of your recordings
 - **Full-Text Search** — Instantly search across all transcripts and summaries
 - **Export** — Share your summaries, mind maps, and Q&A answers as Markdown or copy them to the clipboard
+
+## Screenshots
+
+<p float="left">
+  <img src="docs/screenshots/01_home_askscreen.png" width="30%" />
+  <img src="docs/screenshots/02_recordings_list.png" width="30%" />
+  <img src="docs/screenshots/09_global_mindmap.png" width="30%" />
+</p>
 
 ## Requirements
 

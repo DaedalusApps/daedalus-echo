@@ -11,6 +11,7 @@ A standalone Android voice recorder, transcription, and AI analysis application.
 - **On-Device Transcription** — Whisper base.en via sherpa-onnx; speech-to-text happens entirely offline and audio never leaves your phone
 - **AI Analysis** — Gemma 3 1B generates a title, summary, key topics, and a structured mind map per recording
 - **Ask Your Notes** — Semantic Q&A across your whole library: relevant recordings are retrieved by meaning, then Gemma synthesizes a detailed answer citing specific sources
+- **Action Items** — AI extracts to-do items from your recordings and tracks them on a dedicated Todo screen
 - **Knowledge Graph** — Visualize semantic connections and shared topics across all of your recordings
 - **Full-Text Search** — Instantly search across all transcripts and summaries
 - **Export** — Share your summaries, mind maps, and Q&A answers as Markdown or copy them to the clipboard
@@ -31,7 +32,7 @@ A standalone Android voice recorder, transcription, and AI analysis application.
 | **Android** | ARM64, API 26+ (Android 8.0) |
 | **RAM** | 4 GB minimum (6 GB or more recommended for smooth execution) |
 | **GPU** | Vulkan 1.1+ support recommended for GPU acceleration of Gemma 3 |
-| **Storage** | ~770 MB free (Gemma 3 1B: ~555 MB · Whisper base.en: ~160 MB · text embedder: ~26 MB) |
+| **Storage** | ~700 MB free (Gemma 3 1B: ~555 MB · Whisper base.en: ~119 MB · text embedder: ~26 MB) |
 
 ### Device Compatibility
 
@@ -65,7 +66,7 @@ Popular compatible device series include:
    ```
 3. On first launch the app will prompt you to download the AI models from Settings:
    - **Gemma 3 1B** (~555 MB) — on-device summarization and Q&A
-   - **Whisper base.en** (~160 MB) — on-device speech-to-text
+   - **Whisper base.en** (~119 MB) — on-device speech-to-text
    - **Universal Sentence Encoder** (~26 MB) — on-device text embeddings for semantic Ask
 4. Tap the record button on the home screen to start recording audio.
 

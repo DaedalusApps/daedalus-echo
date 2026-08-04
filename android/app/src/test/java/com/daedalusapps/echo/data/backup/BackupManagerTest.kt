@@ -7,6 +7,7 @@ import com.daedalusapps.echo.ai.normalizeTodoText
 import com.daedalusapps.echo.data.db.AppDatabase
 import com.daedalusapps.echo.data.model.Recording
 import com.daedalusapps.echo.data.model.TodoItem
+import com.daedalusapps.echo.ai.AI_TEXT_BUDGET_KEY
 import com.daedalusapps.echo.viewmodel.MAX_RECORDING_MINUTES_KEY
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -65,6 +66,7 @@ class BackupManagerTest {
             .putString("custom_prompt", "my prompt")
             .putInt("backup_max_count", 7)
             .putInt(MAX_RECORDING_MINUTES_KEY, 45)
+            .putInt(AI_TEXT_BUDGET_KEY, 9_000)
             .commit()
 
         val json = BackupManager(context, source).buildBackupJson()
@@ -93,7 +95,30 @@ class BackupManagerTest {
         assertEquals("my prompt", prefs().getString("custom_prompt", null))
         assertEquals(7, prefs().getInt("backup_max_count", 0))
         assertEquals(45, prefs().getInt(MAX_RECORDING_MINUTES_KEY, 0))
+        assertEquals(9_000, prefs().getInt(AI_TEXT_BUDGET_KEY, 0))
         target.close()
+    }
+
+    // A restored backup can carry an out-of-range AI text budget (e.g. from a corrupt or
+    // hand-edited file). BackupManager restores the raw value verbatim — the clamp lives in
+    // aiTextBudget() so every reader benefits, not just the restore path — but the raw restored
+    // value must still be readable back out unclamped from prefs, and aiTextBudget() must clamp
+    // it when read.
+    @Test
+    fun v2Import_outOfRangeAiTextBudget_isClampedWhenRead() = runBlocking {
+        val db = newDb()
+        val manager = BackupManager(context, db)
+        val json = JSONObject().apply {
+            put("backupVersion", 2)
+            put("recordings", JSONArray())
+            put("todos", JSONArray())
+            put("settings", JSONObject().put(AI_TEXT_BUDGET_KEY, 1_000_000_000))
+        }
+
+        manager.importFromJson(json)
+
+        assertEquals(100_000, com.daedalusapps.echo.ai.aiTextBudget(context))
+        db.close()
     }
 
     @Test

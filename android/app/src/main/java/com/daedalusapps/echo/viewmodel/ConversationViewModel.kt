@@ -8,6 +8,7 @@ import com.daedalusapps.echo.ai.ChatTurn
 import com.daedalusapps.echo.ai.LocalLlmService
 import com.daedalusapps.echo.ai.OFFLINE_GUARDRAIL
 import com.daedalusapps.echo.ai.Role
+import com.daedalusapps.echo.ai.aiTextBudget
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -33,23 +34,53 @@ internal const val IDEATION_SYSTEM_PROMPT = "You are a thoughtful ideation partn
     "develop their thinking, and ask good clarifying follow-up questions rather than lecturing." +
     "\n\n" + OFFLINE_GUARDRAIL
 
+// `internal` (rather than `private`) so ai/OfflineGuardrailTest.kt can assert the guardrail
+// appears exactly once, mirroring IDEATION_SYSTEM_PROMPT above.
+internal const val SUMMARY_PROMPT = "Summarize this conversation so far as a concise rolling " +
+    "summary, capturing key decisions, ideas, and open threads. Write it as prose (no bullet " +
+    "points) so it can be folded into a system prompt. Keep it under 200 words.\n\n" +
+    OFFLINE_GUARDRAIL
+
+// aiTextBudget() already derives its char budget from the model's 4096-token context minus
+// prompt/output headroom (see AI_TEXT_BUDGET_DEFAULT in Categories.kt). Conversation turns
+// accumulate without bound, so reuse that budget rather than a fresh token calculation, but keep
+// only a fraction of it as extra safety margin beyond the reply headroom already baked in.
+private const val CONVERSATION_CONTEXT_FRACTION = 0.75
+
+// Keeps the last two exchanges (user + model turns) intact in the live context on rollover.
+private const val TAIL_MESSAGE_COUNT = 4
+
+// Hard ceiling on the injected summary, as a fraction of the context budget. The model is asked
+// for a short summary but its output length is not guaranteed, and each rollover feeds the
+// previous summary back in, so without a clamp a compounding summary could grow the real sent
+// context past the budget the trip-check assumes.
+private const val SUMMARY_BUDGET_FRACTION = 0.25
+
 private val SESSION_FILENAME_REGEX = Regex("""conv_(\d{14})\.md""")
 private val TURN_HEADER_REGEX = Regex("""^\*\*(Me|Agent)\*\* \((\d{2}):(\d{2})\):$""")
 
 /**
- * Text-only conversation core (#20 / EB.3): persistent per-day session files, single-shot send
- * guard, and consecutive-role merging so a failed send never bricks the session.
+ * Text-only conversation core (#20 / EB.3) plus the rolling-summary live-context cap (#21 /
+ * EB.4): persistent per-day session files, single-shot send guard, consecutive-role merging so
+ * a failed send never bricks the session, and a bounded live context so long conversations don't
+ * grow the prompt without limit (see [buildLiveContext]).
  *
- * Deliberately excluded for now (later issues): the rolling live-context summary (EB.4 — the
- * full history is sent as turns every time, see [performSend]), endSession/analysis (EB.5), and
- * all voice input / TTS / instant-send / auto-listen / replay behavior.
+ * Deliberately excluded for now (later issues): endSession/analysis (EB.5), and all voice input
+ * / TTS / instant-send / auto-listen / replay behavior.
  */
 class ConversationViewModel @JvmOverloads constructor(
     application: Application,
     private val llm: LocalLlmService = LocalLlmService.getInstance(application),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-    private val clock: () -> Long = { System.currentTimeMillis() }
+    private val clock: () -> Long = { System.currentTimeMillis() },
+    private val contextBudgetChars: Int = (aiTextBudget(application) * CONVERSATION_CONTEXT_FRACTION).toInt()
 ) : AndroidViewModel(application) {
+
+    // Rolling summary of messages already folded out of the live context, and the index into
+    // _messages up to which that summary applies. The session FILE always has every turn
+    // verbatim (see appendToFile) — only what gets sent to the LLM is capped.
+    private var rollingSummary: String? = null
+    private var summarizedThroughIndex: Int = 0
 
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages
@@ -109,8 +140,8 @@ class ConversationViewModel @JvmOverloads constructor(
             appendToFile(userMessage)
 
             llm.ensureLoaded()
-            val turns = toChatTurns(_messages.value)
-            val reply = llm.generate(IDEATION_SYSTEM_PROMPT, turns)
+            val (systemPrompt, turns) = buildLiveContext(_messages.value)
+            val reply = llm.generate(systemPrompt, turns)
             val modelMessage = ChatMessage(Role.MODEL, reply, clock())
             _messages.value = _messages.value + modelMessage
             appendToFile(modelMessage)
@@ -147,6 +178,71 @@ class ConversationViewModel @JvmOverloads constructor(
             }
         }
         return turns
+    }
+
+    /**
+     * Builds the (systemPrompt, turns) pair to send to the LLM, capped to [contextBudgetChars].
+     * While the unsummarized tail of [messages] fits the budget, it is sent in full. Once it
+     * would overflow, the older portion (everything but the last [TAIL_MESSAGE_COUNT] messages)
+     * is folded into a rolling summary — compounding any prior summary — which is injected into
+     * the system prompt so the turn list keeps starting with USER and alternating. The summary is
+     * clamped to [SUMMARY_BUDGET_FRACTION] of the budget so compounding cannot grow it without
+     * bound. If the summarize call fails, this falls back to the previous summary plus the tail
+     * for this send only; the rolling summary state is left untouched so the next rollover
+     * retries it.
+     */
+    private suspend fun buildLiveContext(messages: List<ChatMessage>): Pair<String, List<ChatTurn>> {
+        fun systemPromptWith(summary: String?): String =
+            if (summary == null) IDEATION_SYSTEM_PROMPT
+            else "$IDEATION_SYSTEM_PROMPT\n\nSummary of the conversation so far: $summary"
+
+        val liveMessages = messages.subList(summarizedThroughIndex, messages.size)
+        val systemPrompt = systemPromptWith(rollingSummary)
+        val liveTurns = toChatTurns(liveMessages)
+        val contextChars = systemPrompt.length + liveTurns.sumOf { it.text.length }
+
+        // Nothing to gain from rolling over if the entire unsummarized region is already just
+        // the tail — there is no older portion left to summarize away.
+        if (contextChars <= contextBudgetChars || liveMessages.size <= TAIL_MESSAGE_COUNT) {
+            return systemPrompt to liveTurns
+        }
+
+        // buildGemmaPrompt only folds the system prompt — and with it the injected summary — into
+        // a LEADING USER turn, so the tail must start on one. A complete history is odd-length at
+        // this point (the just-sent user turn is last), which puts a MODEL turn at the raw tail
+        // start; that turn is pushed into the summarized span instead, so nothing is skipped.
+        var tailStart = messages.size - TAIL_MESSAGE_COUNT
+        while (tailStart < messages.size - 1 && messages[tailStart].role != Role.USER) tailStart++
+        val olderMessages = messages.subList(summarizedThroughIndex, tailStart)
+        val tailMessages = messages.subList(tailStart, messages.size)
+        val olderText = buildString {
+            rollingSummary?.let { append("Previous summary: $it\n\n") }
+            olderMessages.forEach { message ->
+                append(if (message.role == Role.USER) "User: " else "Assistant: ")
+                append(message.text)
+                append("\n\n")
+            }
+        }
+
+        // A blank generation is treated as a failure: accepting it would advance
+        // summarizedThroughIndex and drop the older span with nothing standing in for it.
+        val newSummary = try {
+            llm.generate(SUMMARY_PROMPT, olderText).trim().ifBlank { null }
+        } catch (e: Exception) {
+            Log.e("ConversationViewModel", "Summary generation failed, falling back to tail truncation", e)
+            null
+        }
+
+        if (newSummary == null) {
+            // Keep any summary earned by an earlier rollover: dropping it would discard context
+            // that is already safely folded down, for no budget gain (this send is a strict
+            // subset of the over-budget context measured above).
+            return systemPrompt to toChatTurns(tailMessages)
+        }
+        val clamped = newSummary.take((contextBudgetChars * SUMMARY_BUDGET_FRACTION).toInt())
+        rollingSummary = clamped
+        summarizedThroughIndex = tailStart
+        return systemPromptWith(clamped) to toChatTurns(tailMessages)
     }
 
     private suspend fun appendToFile(message: ChatMessage) {

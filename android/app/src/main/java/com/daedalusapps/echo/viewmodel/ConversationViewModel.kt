@@ -73,6 +73,15 @@ private const val SUMMARY_BUDGET_FRACTION = 0.25
 /** SharedPreferences key for whether spoken replies (Android TTS) are on in conversation mode. */
 const val CONVERSATION_TTS_ENABLED_KEY = "conversation_tts_enabled"
 
+/** SharedPreferences key for the spoken-reply rate (Float, default 1.0). */
+const val CONVERSATION_TTS_RATE_KEY = "conversation_tts_rate"
+
+/** SharedPreferences key for the selected voice id (String, default "" = system default). */
+const val CONVERSATION_TTS_VOICE_KEY = "conversation_tts_voice"
+
+private const val TTS_RATE_DEFAULT = 1.0f
+private const val TTS_VOICE_DEFAULT = ""
+
 private val SESSION_FILENAME_REGEX = Regex("""conv_(\d{14})\.md""")
 private val TURN_HEADER_REGEX = Regex("""^\*\*(Me|Agent)\*\* \((\d{2}):(\d{2})\):$""")
 
@@ -90,8 +99,12 @@ private val TURN_HEADER_REGEX = Regex("""^\*\*(Me|Agent)\*\* \((\d{2}):(\d{2})\)
  * MODEL reply when [ttsEnabled] is on, never binding the engine for a user who leaves it off (see
  * [ttsDelegate]).
  *
- * Deliberately excluded for now (later issues): the voice/rate picker UI, instant-send, and
- * auto-listen/replay behavior.
+ * Also includes the voice/rate picker (#25 / EC.3): [setTtsRate]/[setTtsVoice] persist and apply
+ * a speaking rate and voice id, previewing the change while spoken replies are on. The persisted
+ * values are applied at the single point the engine is (lazily) built, so a warm engine always
+ * starts configured the way the user last left it — see [ttsDelegate].
+ *
+ * Deliberately excluded for now (later issues): instant-send and auto-listen/replay behavior.
  */
 class ConversationViewModel @JvmOverloads constructor(
     application: Application,
@@ -142,6 +155,11 @@ class ConversationViewModel @JvmOverloads constructor(
     // TextToSpeech engine for users who never turn spoken replies on — see stopSpeaking().
     private val ttsDelegate = lazy {
         val service = ttsProvider()
+        service.setSpeechRate(_ttsRate.value)
+        val voiceId = _ttsVoiceId.value
+        // A no-longer-existing persisted voice id returns false here; that is a silent fallback
+        // to the system default, not an error — the pref is intentionally left untouched.
+        if (voiceId.isNotEmpty()) service.setVoice(voiceId)
         // The listener may be invoked off the main thread (TextToSpeech's UtteranceProgressListener
         // callbacks are not guaranteed to arrive on it); MutableStateFlow.value is thread-safe, so
         // no dispatching back to the main thread is needed here.
@@ -170,6 +188,18 @@ class ConversationViewModel @JvmOverloads constructor(
     )
     val ttsEnabled: StateFlow<Boolean> = _ttsEnabled
 
+    private val _ttsRate = MutableStateFlow(
+        application.getSharedPreferences("daedalus_prefs", Context.MODE_PRIVATE)
+            .getFloat(CONVERSATION_TTS_RATE_KEY, TTS_RATE_DEFAULT)
+    )
+    val ttsRate: StateFlow<Float> = _ttsRate
+
+    private val _ttsVoiceId = MutableStateFlow(
+        application.getSharedPreferences("daedalus_prefs", Context.MODE_PRIVATE)
+            .getString(CONVERSATION_TTS_VOICE_KEY, TTS_VOICE_DEFAULT) ?: TTS_VOICE_DEFAULT
+    )
+    val ttsVoiceId: StateFlow<String> = _ttsVoiceId
+
     /**
      * Stops any in-progress speech, e.g. when the screen is dismissed or the user mutes.
      *
@@ -195,7 +225,49 @@ class ConversationViewModel @JvmOverloads constructor(
     }
 
     /**
-     * Voices available for a future picker UI (#25); empty when TTS is unavailable. Also empty —
+     * Sets the spoken-reply rate: persists it, and — mirroring [setTtsEnabled]'s no-bind-when-
+     * disabled guarantee — applies it to the engine only if spoken replies are enabled or the
+     * engine has already been built. A disabled user who has never warmed the engine must not
+     * construct one just to change a setting they aren't using.
+     *
+     * The short preview is spoken only while spoken replies are ON: with the toggle off the user
+     * has asked for silence, so an already-built engine is reconfigured mutely.
+     */
+    fun setTtsRate(rate: Float) {
+        _ttsRate.value = rate
+        getApplication<Application>()
+            .getSharedPreferences("daedalus_prefs", Context.MODE_PRIVATE)
+            .edit()
+            .putFloat(CONVERSATION_TTS_RATE_KEY, rate)
+            .apply()
+        if (_ttsEnabled.value || ttsDelegate.isInitialized()) {
+            // If this call is what first builds the engine, the lazy initializer above already
+            // applied the just-updated _ttsRate.value — applying it again would double-call.
+            val alreadyBuilt = ttsDelegate.isInitialized()
+            val engine = tts
+            if (alreadyBuilt) engine.setSpeechRate(rate)
+            if (_ttsEnabled.value && engine.isAvailable) engine.preview("This is a preview of the speech rate.")
+        }
+    }
+
+    /** Sets the selected voice; same persist/apply/preview behavior as [setTtsRate]. */
+    fun setTtsVoice(id: String) {
+        _ttsVoiceId.value = id
+        getApplication<Application>()
+            .getSharedPreferences("daedalus_prefs", Context.MODE_PRIVATE)
+            .edit()
+            .putString(CONVERSATION_TTS_VOICE_KEY, id)
+            .apply()
+        if (_ttsEnabled.value || ttsDelegate.isInitialized()) {
+            val alreadyBuilt = ttsDelegate.isInitialized()
+            val engine = tts
+            if (alreadyBuilt) engine.setVoice(id)
+            if (_ttsEnabled.value && engine.isAvailable) engine.preview("This is a preview of the selected voice.")
+        }
+    }
+
+    /**
+     * Voices available for the picker UI (#25); empty when TTS is unavailable. Also empty —
      * without touching the engine — when spoken replies are off and the engine was never built:
      * merely checking must not bind a TextToSpeech engine the user isn't using.
      */

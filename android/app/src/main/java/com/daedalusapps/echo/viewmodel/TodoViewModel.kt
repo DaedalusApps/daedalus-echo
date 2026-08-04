@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.daedalusapps.echo.ai.aiTextBudget
 import com.daedalusapps.echo.ai.LocalLlmService
 import com.daedalusapps.echo.ai.TODO_EXTRACTION_PROMPT
 import com.daedalusapps.echo.ai.isDuplicateTodoNormalized
@@ -117,7 +118,8 @@ class TodoViewModel @JvmOverloads constructor(
             return
         }
 
-        val batches = packBatches(blocks)
+        val maxBatchChars = aiTextBudget(getApplication()) * 3 / 4
+        val batches = packBatches(blocks, maxBatchChars)
 
         llm.ensureLoaded()
         val existing = db.todoDao().getAllFlow().first().map { it.text }
@@ -145,13 +147,13 @@ class TodoViewModel @JvmOverloads constructor(
         _lastExtractCount.value = insertedThisRun.size
     }
 
-    /** Greedy-packs note blocks into batches of at most [MAX_BATCH_CHARS] chars. */
-    private fun packBatches(blocks: List<String>): List<String> {
+    /** Greedy-packs note blocks into batches of at most [maxBatchChars] chars. */
+    private fun packBatches(blocks: List<String>, maxBatchChars: Int): List<String> {
         val batches = mutableListOf<String>()
         val current = StringBuilder()
         for (block in blocks) {
-            val b = if (block.length > MAX_BATCH_CHARS) block.take(MAX_BATCH_CHARS) else block
-            if (current.isNotEmpty() && current.length + SEPARATOR.length + b.length > MAX_BATCH_CHARS) {
+            val b = if (block.length > maxBatchChars) block.take(maxBatchChars) else block
+            if (current.isNotEmpty() && current.length + SEPARATOR.length + b.length > maxBatchChars) {
                 batches.add(current.toString())
                 current.setLength(0)
             }
@@ -163,7 +165,6 @@ class TodoViewModel @JvmOverloads constructor(
     }
 
     private companion object {
-        const val MAX_BATCH_CHARS = 9_000
         const val SEPARATOR = "\n\n"
     }
 }

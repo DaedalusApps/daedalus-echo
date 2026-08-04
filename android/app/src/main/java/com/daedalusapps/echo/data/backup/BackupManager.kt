@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
+import com.daedalusapps.echo.ai.AI_TEXT_BUDGET_KEY
 import com.daedalusapps.echo.ai.normalizeTodoText
 import com.daedalusapps.echo.data.RecordingRepository
 import com.daedalusapps.echo.data.db.AppDatabase
@@ -305,6 +306,7 @@ class BackupManager(
         if (settings.has(BackupPrefs.INTERVAL_HOURS)) editor.putLong(BackupPrefs.INTERVAL_HOURS, settings.optLong(BackupPrefs.INTERVAL_HOURS))
         if (settings.has(BackupPrefs.MAX_COUNT)) editor.putInt(BackupPrefs.MAX_COUNT, settings.optInt(BackupPrefs.MAX_COUNT))
         if (settings.has(MAX_RECORDING_MINUTES_KEY)) editor.putInt(MAX_RECORDING_MINUTES_KEY, settings.optInt(MAX_RECORDING_MINUTES_KEY))
+        if (settings.has(AI_TEXT_BUDGET_KEY)) editor.putInt(AI_TEXT_BUDGET_KEY, settings.optInt(AI_TEXT_BUDGET_KEY))
 
         editor.apply()
     }
@@ -319,7 +321,8 @@ class BackupManager(
             "todo_lookback_hours",
             BackupPrefs.INTERVAL_HOURS,
             BackupPrefs.MAX_COUNT,
-            MAX_RECORDING_MINUTES_KEY
+            MAX_RECORDING_MINUTES_KEY,
+            AI_TEXT_BUDGET_KEY
         )
 
         /**

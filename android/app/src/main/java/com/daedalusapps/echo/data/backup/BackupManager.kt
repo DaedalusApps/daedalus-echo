@@ -9,6 +9,7 @@ import com.daedalusapps.echo.data.RecordingRepository
 import com.daedalusapps.echo.data.db.AppDatabase
 import com.daedalusapps.echo.data.model.Recording
 import com.daedalusapps.echo.data.model.TodoItem
+import com.daedalusapps.echo.viewmodel.MAX_RECORDING_MINUTES_KEY
 import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import org.json.JSONObject
@@ -303,6 +304,7 @@ class BackupManager(
         if (settings.has("todo_lookback_hours")) editor.putLong("todo_lookback_hours", settings.optLong("todo_lookback_hours"))
         if (settings.has(BackupPrefs.INTERVAL_HOURS)) editor.putLong(BackupPrefs.INTERVAL_HOURS, settings.optLong(BackupPrefs.INTERVAL_HOURS))
         if (settings.has(BackupPrefs.MAX_COUNT)) editor.putInt(BackupPrefs.MAX_COUNT, settings.optInt(BackupPrefs.MAX_COUNT))
+        if (settings.has(MAX_RECORDING_MINUTES_KEY)) editor.putInt(MAX_RECORDING_MINUTES_KEY, settings.optInt(MAX_RECORDING_MINUTES_KEY))
 
         editor.apply()
     }
@@ -316,7 +318,8 @@ class BackupManager(
             "custom_prompt",
             "todo_lookback_hours",
             BackupPrefs.INTERVAL_HOURS,
-            BackupPrefs.MAX_COUNT
+            BackupPrefs.MAX_COUNT,
+            MAX_RECORDING_MINUTES_KEY
         )
 
         /**

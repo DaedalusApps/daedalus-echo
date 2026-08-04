@@ -34,6 +34,9 @@ import com.daedalusapps.echo.ai.isWhisperReady
 import com.daedalusapps.echo.data.backup.BackupManager
 import com.daedalusapps.echo.data.backup.BackupPrefs
 import com.daedalusapps.echo.data.backup.BackupWorker
+import com.daedalusapps.echo.viewmodel.MAX_RECORDING_MINUTES_DEFAULT
+import com.daedalusapps.echo.viewmodel.MAX_RECORDING_MINUTES_KEY
+import com.daedalusapps.echo.viewmodel.MAX_RECORDING_MINUTES_UNLIMITED
 import com.daedalusapps.echo.viewmodel.RecordingViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -51,6 +54,17 @@ private fun backupIntervalLabel(hours: Long): String =
 
 private fun todoLookbackLabel(hours: Long): String =
     LOOKBACK_OPTIONS.firstOrNull { it.hours == hours }?.label ?: "Last $hours hours"
+
+private val MAX_RECORDING_DURATION_OPTIONS = listOf(
+    30 to "30 minutes",
+    60 to "1 hour",
+    120 to "2 hours",
+    240 to "4 hours",
+    MAX_RECORDING_MINUTES_UNLIMITED to "Unlimited"
+)
+
+private fun maxRecordingDurationLabel(minutes: Int): String =
+    MAX_RECORDING_DURATION_OPTIONS.firstOrNull { it.first == minutes }?.second ?: "$minutes minutes"
 
 private fun formatLastBackupTime(millis: Long): String {
     if (millis <= 0L) return "never"
@@ -79,6 +93,8 @@ fun SettingsScreen(
     var backupIntervalMenuExpanded by remember { mutableStateOf(false) }
     var todoLookbackHours by remember { mutableStateOf(prefs.getLong(TODO_LOOKBACK_HOURS_KEY, TODO_LOOKBACK_HOURS_DEFAULT)) }
     var todoLookbackMenuExpanded by remember { mutableStateOf(false) }
+    var maxRecordingMinutes by remember { mutableStateOf(prefs.getInt(MAX_RECORDING_MINUTES_KEY, MAX_RECORDING_MINUTES_DEFAULT)) }
+    var maxRecordingMenuExpanded by remember { mutableStateOf(false) }
     var isBackingUp by remember { mutableStateOf(false) }
     val backupFolderName = remember(backupFolderUri) {
         backupFolderUri?.let { uriStr ->
@@ -309,6 +325,39 @@ fun SettingsScreen(
                         checked = useBluetoothMic,
                         onCheckedChange = { toggleBluetoothMic() }
                     )
+                }
+
+                // Local Recording
+                Text("Local Recording", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                ExposedDropdownMenuBox(
+                    expanded = maxRecordingMenuExpanded,
+                    onExpandedChange = { maxRecordingMenuExpanded = it }
+                ) {
+                    OutlinedTextField(
+                        readOnly = true,
+                        value = maxRecordingDurationLabel(maxRecordingMinutes),
+                        onValueChange = {},
+                        label = { Text("Max recording duration") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = maxRecordingMenuExpanded) },
+                        modifier = Modifier
+                            .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                            .fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = maxRecordingMenuExpanded,
+                        onDismissRequest = { maxRecordingMenuExpanded = false }
+                    ) {
+                        MAX_RECORDING_DURATION_OPTIONS.forEach { (minutes, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    maxRecordingMinutes = minutes
+                                    prefs.edit().putInt(MAX_RECORDING_MINUTES_KEY, minutes).apply()
+                                    maxRecordingMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
                 }
 
                 // Todo List

@@ -7,6 +7,7 @@ import com.daedalusapps.echo.ai.normalizeTodoText
 import com.daedalusapps.echo.data.db.AppDatabase
 import com.daedalusapps.echo.data.model.Recording
 import com.daedalusapps.echo.data.model.TodoItem
+import com.daedalusapps.echo.viewmodel.MAX_RECORDING_MINUTES_KEY
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
@@ -63,6 +64,7 @@ class BackupManagerTest {
             .putBoolean("auto_process", true)
             .putString("custom_prompt", "my prompt")
             .putInt("backup_max_count", 7)
+            .putInt(MAX_RECORDING_MINUTES_KEY, 45)
             .commit()
 
         val json = BackupManager(context, source).buildBackupJson()
@@ -90,6 +92,7 @@ class BackupManagerTest {
         assertTrue(prefs().getBoolean("auto_process", false))
         assertEquals("my prompt", prefs().getString("custom_prompt", null))
         assertEquals(7, prefs().getInt("backup_max_count", 0))
+        assertEquals(45, prefs().getInt(MAX_RECORDING_MINUTES_KEY, 0))
         target.close()
     }
 

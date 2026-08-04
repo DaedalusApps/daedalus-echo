@@ -79,6 +79,9 @@ const val CONVERSATION_TTS_RATE_KEY = "conversation_tts_rate"
 /** SharedPreferences key for the selected voice id (String, default "" = system default). */
 const val CONVERSATION_TTS_VOICE_KEY = "conversation_tts_voice"
 
+/** SharedPreferences key for whether a voice transcription is sent immediately (Boolean, default false). */
+const val CONVERSATION_INSTANT_SEND_KEY = "conversation_instant_send"
+
 private const val TTS_RATE_DEFAULT = 1.0f
 private const val TTS_VOICE_DEFAULT = ""
 
@@ -104,7 +107,12 @@ private val TURN_HEADER_REGEX = Regex("""^\*\*(Me|Agent)\*\* \((\d{2}):(\d{2})\)
  * values are applied at the single point the engine is (lazily) built, so a warm engine always
  * starts configured the way the user last left it — see [ttsDelegate].
  *
- * Deliberately excluded for now (later issues): instant-send and auto-listen/replay behavior.
+ * Also includes instant send after voice transcription (#26 / ED.1): when [instantSend] is on, a
+ * successful non-blank transcription is sent immediately through the same pipeline as [send],
+ * instead of being posted into [voiceTranscript] for the user to review/edit first. See
+ * [stopVoiceInput].
+ *
+ * Deliberately excluded for now (later issues): auto-listen/replay behavior.
  */
 class ConversationViewModel @JvmOverloads constructor(
     application: Application,
@@ -274,6 +282,27 @@ class ConversationViewModel @JvmOverloads constructor(
     fun availableVoices(): List<VoiceInfo> =
         if (_ttsEnabled.value || ttsDelegate.isInitialized()) tts.availableVoices() else emptyList()
 
+    // Instant send after voice transcription (#26 / ED.1): when on, a successful non-blank
+    // transcription is sent immediately through the same pipeline as send(), instead of being
+    // posted into voiceTranscript for the user to review/edit in the input field first.
+    private val _instantSend = MutableStateFlow(
+        application.getSharedPreferences("daedalus_prefs", Context.MODE_PRIVATE)
+            .getBoolean(CONVERSATION_INSTANT_SEND_KEY, false)
+    )
+    val instantSend: StateFlow<Boolean> = _instantSend
+
+    // Method shape (setter + separate persist) kept the same as notetaker's, even though there is
+    // no auto-listen coupling to persist here yet, so #30's diff — which adds that coupling — stays
+    // small.
+    fun setInstantSend(enabled: Boolean) {
+        _instantSend.value = enabled
+        getApplication<Application>()
+            .getSharedPreferences("daedalus_prefs", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(CONVERSATION_INSTANT_SEND_KEY, enabled)
+            .apply()
+    }
+
     // Auto-listen must never spin on silence once it exists (#30): a blank transcription in
     // stopVoiceInput() arms this so the next auto-listen trigger can skip itself. Unused until
     // #30 wires up the auto-listen loop.
@@ -354,6 +383,29 @@ class ConversationViewModel @JvmOverloads constructor(
                     _error.value = "Didn't catch that"
                     // Never spin the auto-listen loop on silence: skip the next trigger (#30).
                     suppressNextAutoListen = true
+                } else if (_instantSend.value) {
+                    // The _isGenerating claim below must happen synchronously, with no suspend
+                    // point between the check and the set, so it is atomic with send()'s own
+                    // synchronous claim on the main thread: whichever runs first wins the race.
+                    // If something else is already generating, the transcript must not be
+                    // dropped — fall back to voiceTranscript exactly like instant send OFF.
+                    if (_isGenerating.value) {
+                        // voiceTranscript lands in the input field — which the instant-send
+                        // surface hides, so on its own this would silently swallow the user's
+                        // words. Surfacing them through the error snackbar as well means they are
+                        // never lost without the user seeing what did not send.
+                        _voiceTranscript.value = text
+                        _error.value = "Busy — not sent: \"$text\""
+                    } else {
+                        stopSpeaking()
+                        _isGenerating.value = true
+                        _error.value = null
+                        // Launched, not awaited: transcription is over the moment the claim is
+                        // made, so this coroutine's finally must run now — otherwise the mic
+                        // button would keep spinning "transcribing" and the temp audio file
+                        // would stay on disk for the whole generation.
+                        generationJob = viewModelScope.launch { performSend(text.trim()) }
+                    }
                 } else {
                     _voiceTranscript.value = text
                 }

@@ -51,6 +51,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -78,7 +79,7 @@ import com.daedalusapps.echo.viewmodel.ConversationViewModel
  * Minimal text-chat surface for conversation mode (#20 / EB.3), plus an End session action that
  * saves and analyzes the transcript (#22 / EB.5), an inline Stop for the in-flight send/end,
  * push-to-talk voice input (#23 / EC.1), a spoken-replies toggle (#24 / EC.2), and an overflow
- * menu with speed and voice pickers (#25 / EC.3). Instant-send is added in a later issue.
+ * menu with speed and voice pickers (#25 / EC.3) plus an instant-send toggle (#26 / ED.1).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -94,6 +95,7 @@ fun ConversationScreen(
     val voiceTranscript by conversationViewModel.voiceTranscript.collectAsState()
     val ttsEnabled by conversationViewModel.ttsEnabled.collectAsState()
     val isSpeaking by conversationViewModel.isSpeaking.collectAsState()
+    val instantSend by conversationViewModel.instantSend.collectAsState()
 
     val context = LocalContext.current
     var input by remember { mutableStateOf("") }
@@ -220,6 +222,18 @@ fun ConversationScreen(
                             onClick = {
                                 menuExpanded = false
                                 showVoiceDialog = true
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Instant send") },
+                            trailingIcon = {
+                                // Null so the whole row is the single tap target: tapping the
+                                // switch itself otherwise toggles without closing the menu.
+                                Switch(checked = instantSend, onCheckedChange = null)
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                conversationViewModel.setInstantSend(!instantSend)
                             }
                         )
                     }

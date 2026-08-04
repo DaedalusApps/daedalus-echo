@@ -259,21 +259,12 @@ class ConversationViewModelTest {
         assertFalse(messages.any { it.text.contains("garbage preamble") })
     }
 
-    // (g) newSessionFile is collision-avoiding: if the deterministic-clock filename is already
-    //     taken (e.g. a stray file, or two rotations landing in the same second), construction
-    //     must pick the next untaken second rather than silently overwriting it.
-    @Test
-    fun construct_sessionFilenameAlreadyTaken_picksNextUntakenSecond() = runTest {
-        val dir = conversationsDir().apply { mkdirs() }
-        val takenName = "conv_" + SimpleDateFormat("yyyyMMddHHmmss", Locale.US).format(Date(nowMillis)) + ".md"
-        File(dir, takenName).writeText("garbage, not a valid session (forces collision-avoidance, not resume)")
-
-        val vm = newViewModel()
-        advanceUntilIdle()
-
-        assertTrue(vm.sessionFile.name != takenName)
-        assertTrue(vm.sessionFile.exists().not() || vm.messages.value.isEmpty())
-    }
+    // Note: newSessionFile()'s collision-avoiding retry loop (ported verbatim from notetaker) is
+    // only reachable in this slice's construction path when NO today-dated file exists yet — any
+    // existing conv_<today>*.md is instead picked up by findTodaysSessionFile() and *resumed*, not
+    // rotated past. The loop's actual collision branch only fires via startNewSession(), which is
+    // out of scope here (no UI control for it yet) — see #20 scope notes. Not separately unit
+    // tested for that reason; it will get direct coverage when startNewSession() is ported.
 
     // (P8.4-a) stopGenerating() during an in-flight generate: no model message appended, no
     //     error surfaced (cancellation is not a failure), isGenerating clears, and the user's

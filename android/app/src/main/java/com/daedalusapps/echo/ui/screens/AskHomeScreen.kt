@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Bluetooth
@@ -85,7 +86,8 @@ fun AskHomeScreen(
     onNavigateToRecordings: () -> Unit,
     onNavigateToExpandedMap: () -> Unit,
     onNavigateToSettings: () -> Unit,
-    onNavigateToTodos: () -> Unit
+    onNavigateToTodos: () -> Unit,
+    onNavigateToConversation: () -> Unit
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -159,6 +161,9 @@ fun AskHomeScreen(
                 actions = {
                     IconButton(onClick = onNavigateToTodos) {
                         Icon(Icons.Default.Checklist, contentDescription = "Todos")
+                    }
+                    IconButton(onClick = onNavigateToConversation) {
+                        Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = "Conversation")
                     }
                     IconButton(onClick = onNavigateToRecordings) {
                         Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Recordings")

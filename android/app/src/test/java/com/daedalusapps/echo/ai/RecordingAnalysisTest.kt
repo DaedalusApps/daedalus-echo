@@ -42,7 +42,7 @@ class RecordingAnalysisTest {
     @Test
     fun singlePass_callsGenerateOnceWithActivePrompt() = runTest {
         val transcript = "short transcript"
-        coEvery { llm.generate(any(), any()) } returns jsonResponse
+        coEvery { llm.generate(any(), any<String>()) } returns jsonResponse
 
         analyzeTranscript(context, llm, embedder, repo, "note.mp3", transcript)
 
@@ -54,18 +54,18 @@ class RecordingAnalysisTest {
         // aiTextBudget resolves to AI_TEXT_BUDGET_DEFAULT (12,000 chars) via the mocked prefs,
         // so a transcript well beyond that forces multiple chunks.
         val transcript = "word ".repeat(3000)
-        coEvery { llm.generate(any(), any()) } returns jsonResponse
+        coEvery { llm.generate(any(), any<String>()) } returns jsonResponse
 
         analyzeTranscript(context, llm, embedder, repo, "note.mp3", transcript)
 
-        coVerify(atLeast = 2) { llm.generate(CHUNK_SUMMARY_PROMPT, any()) }
-        coVerify(exactly = 1) { llm.generate(DEFAULT_PROMPT, any()) }
+        coVerify(atLeast = 2) { llm.generate(CHUNK_SUMMARY_PROMPT, any<String>()) }
+        coVerify(exactly = 1) { llm.generate(DEFAULT_PROMPT, any<String>()) }
     }
 
     @Test
     fun updateSummary_receivesParsedFields() = runTest {
         val transcript = "short transcript"
-        coEvery { llm.generate(any(), any()) } returns jsonResponse
+        coEvery { llm.generate(any(), any<String>()) } returns jsonResponse
 
         analyzeTranscript(context, llm, embedder, repo, "note.mp3", transcript)
 
@@ -84,7 +84,7 @@ class RecordingAnalysisTest {
     @Test
     fun embeddingSaved_whenEmbedderReady() = runTest {
         val transcript = "short transcript"
-        coEvery { llm.generate(any(), any()) } returns jsonResponse
+        coEvery { llm.generate(any(), any<String>()) } returns jsonResponse
         every { embedder.isReady } returns true
         coEvery { embedder.embed(any()) } returns floatArrayOf(0.1f, 0.2f)
 
@@ -97,7 +97,7 @@ class RecordingAnalysisTest {
     @Test
     fun embeddingNotSaved_whenEmbedderNotReady() = runTest {
         val transcript = "short transcript"
-        coEvery { llm.generate(any(), any()) } returns jsonResponse
+        coEvery { llm.generate(any(), any<String>()) } returns jsonResponse
         every { embedder.isReady } returns false
 
         analyzeTranscript(context, llm, embedder, repo, "note.mp3", transcript)
@@ -109,7 +109,7 @@ class RecordingAnalysisTest {
     @Test
     fun singlePass_reportsAnalyzingProgress() = runTest {
         val transcript = "short transcript"
-        coEvery { llm.generate(any(), any()) } returns jsonResponse
+        coEvery { llm.generate(any(), any<String>()) } returns jsonResponse
         val updates = mutableListOf<String>()
 
         analyzeTranscript(context, llm, embedder, repo, "note.mp3", transcript) { updates.add(it) }
@@ -120,7 +120,7 @@ class RecordingAnalysisTest {
     @Test
     fun multiChunk_reportsPerChunkThenSynthesisProgress() = runTest {
         val transcript = "word ".repeat(3000)
-        coEvery { llm.generate(any(), any()) } returns jsonResponse
+        coEvery { llm.generate(any(), any<String>()) } returns jsonResponse
         val updates = mutableListOf<String>()
 
         analyzeTranscript(context, llm, embedder, repo, "note.mp3", transcript) { updates.add(it) }

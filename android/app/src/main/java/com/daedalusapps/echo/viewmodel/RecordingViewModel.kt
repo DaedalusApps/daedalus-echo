@@ -51,6 +51,13 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/** SharedPreferences key for the max phone-mic recording duration, in minutes. */
+const val MAX_RECORDING_MINUTES_KEY = "max_recording_minutes"
+const val MAX_RECORDING_MINUTES_DEFAULT = 120
+
+/** Sentinel value meaning "no cap". */
+const val MAX_RECORDING_MINUTES_UNLIMITED = -1
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class RecordingViewModel @JvmOverloads constructor(
     application: Application,
@@ -58,7 +65,9 @@ class RecordingViewModel @JvmOverloads constructor(
     private val repo: RecordingRepository = RecordingRepository(db.recordingDao()),
     private val llm: LocalLlmService = LocalLlmService.getInstance(application),
     private val transcriber: TranscriptionService = TranscriptionService(application),
-    private val embedder: EmbeddingService = EmbeddingService(application)
+    private val embedder: EmbeddingService = EmbeddingService(application),
+    private val audioRecorderProvider: () -> AudioRecorder = { AudioRecorder(application) },
+    private val timerDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.Default
 ) : AndroidViewModel(application) {
 
     private val _syncProgress = MutableStateFlow<String?>(null)
@@ -92,10 +101,14 @@ class RecordingViewModel @JvmOverloads constructor(
     val exportIntent: StateFlow<Intent?> = _exportIntent
 
     // Local Audio Recording Engine
-    private val audioRecorder = AudioRecorder(application)
+    // Lazy so construction doesn't touch AudioManager until a recording actually starts.
+    private val audioRecorder by lazy { audioRecorderProvider() }
     private var recordingTimerJob: Job? = null
     private var currentRecordingFile: File? = null
     private var recordingStartMillis: Long = 0L
+
+    /** Max duration cap for the recording in progress, in seconds; null means unlimited. */
+    private var maxDurationCapSeconds: Long? = null
 
     private val _isRecording = MutableStateFlow(false)
     val isRecording: StateFlow<Boolean> = _isRecording
@@ -105,6 +118,11 @@ class RecordingViewModel @JvmOverloads constructor(
 
     private val _recordingDurationSeconds = MutableStateFlow(0L)
     val recordingDurationSeconds: StateFlow<Long> = _recordingDurationSeconds
+
+    private val _autoStopNotice = MutableStateFlow<String?>(null)
+    val autoStopNotice: StateFlow<String?> = _autoStopNotice
+
+    fun clearAutoStopNotice() { _autoStopNotice.value = null }
 
     val useBluetoothMic = MutableStateFlow(false)
 
@@ -176,23 +194,17 @@ class RecordingViewModel @JvmOverloads constructor(
 
         _recordingDurationSeconds.value = 0L
         recordingStartMillis = System.currentTimeMillis()
-        
+        maxDurationCapSeconds = readMaxDurationCapSeconds()
+
         try {
             audioRecorder.start(file, useBluetoothMic.value)
             _isRecording.value = true
             _isPaused.value = false
             _aiError.value = null
-            
+
             // Start duration timer
             recordingTimerJob?.cancel()
-            recordingTimerJob = viewModelScope.launch(Dispatchers.Default) {
-                var elapsed = 0L
-                while (true) {
-                    delay(1000)
-                    elapsed++
-                    _recordingDurationSeconds.value = elapsed
-                }
-            }
+            recordingTimerJob = launchTimerLoop(initialElapsed = 0L)
             Log.i("RecordingViewModel", "Started local recording: ${file.name}")
         } catch (e: Exception) {
             Log.e("RecordingViewModel", "Failed to start local recording", e)
@@ -211,12 +223,36 @@ class RecordingViewModel @JvmOverloads constructor(
         if (!_isRecording.value || !_isPaused.value) return
         audioRecorder.resume()
         _isPaused.value = false
-        recordingTimerJob = viewModelScope.launch(Dispatchers.Default) {
-            var elapsed = _recordingDurationSeconds.value
-            while (true) {
-                delay(1000)
-                elapsed++
-                _recordingDurationSeconds.value = elapsed
+        recordingTimerJob = launchTimerLoop(initialElapsed = _recordingDurationSeconds.value)
+    }
+
+    /** Reads the configured max-duration cap in seconds, or null if unlimited. */
+    private fun readMaxDurationCapSeconds(): Long? {
+        val prefs = getApplication<Application>().getSharedPreferences("daedalus_prefs", Context.MODE_PRIVATE)
+        val minutes = prefs.getInt(MAX_RECORDING_MINUTES_KEY, MAX_RECORDING_MINUTES_DEFAULT)
+        return if (minutes <= 0) null else minutes * 60L
+    }
+
+    /**
+     * Ticks recordingDurationSeconds once per second starting from [initialElapsed]. When
+     * maxDurationCapSeconds is reached, auto-stops through the same path a manual stop
+     * uses and surfaces a notice for the UI to show.
+     */
+    private fun launchTimerLoop(initialElapsed: Long): Job = viewModelScope.launch(timerDispatcher) {
+        var elapsed = initialElapsed
+        while (true) {
+            delay(1000)
+            elapsed++
+            _recordingDurationSeconds.value = elapsed
+            val cap = maxDurationCapSeconds
+            if (cap != null && elapsed >= cap) {
+                // Only claim an auto-stop if the recording is still running — a manual stop
+                // landing on the same tick would otherwise surface a bogus notice.
+                if (_isRecording.value) {
+                    _autoStopNotice.value = "Recording auto-stopped after reaching the ${cap / 60}-minute limit"
+                    stopLocalRecording()
+                }
+                break
             }
         }
     }

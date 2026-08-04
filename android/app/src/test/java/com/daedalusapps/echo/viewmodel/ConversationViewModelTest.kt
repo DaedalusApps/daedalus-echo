@@ -259,6 +259,107 @@ class ConversationViewModelTest {
         assertFalse(messages.any { it.text.contains("garbage preamble") })
     }
 
+    // (gate-audit) An empty session file (e.g. created but never written, or truncated) must
+    //     parse to no messages rather than crashing.
+    @Test
+    fun reload_emptyFile_returnsNoMessages() = runTest {
+        val dir = conversationsDir().apply { mkdirs() }
+        val name = "conv_" + SimpleDateFormat("yyyyMMddHHmmss", Locale.US).format(Date(nowMillis)) + ".md"
+        File(dir, name).writeText("")
+
+        val vm = newViewModel()
+        advanceUntilIdle()
+
+        assertTrue(vm.messages.value.isEmpty())
+    }
+
+    // (gate-audit) A file containing only a turn header with no body text (immediate EOF, or a
+    //     header immediately followed by another header) has nothing representable to flush —
+    //     it must be dropped rather than producing an empty-text message.
+    @Test
+    fun reload_headerOnlyNoBody_producesNoMessages() = runTest {
+        val dir = conversationsDir().apply { mkdirs() }
+        val name = "conv_" + SimpleDateFormat("yyyyMMddHHmmss", Locale.US).format(Date(nowMillis)) + ".md"
+        File(dir, name).writeText("**Me** (09:15):\n")
+
+        val vm = newViewModel()
+        advanceUntilIdle()
+
+        assertTrue(vm.messages.value.isEmpty())
+    }
+
+    // (gate-audit) Non-UTF-8 / binary junk in a session file must not crash the parser or hang
+    //     it — it should decode with replacement characters and parse as ordinary (garbled) body
+    //     text, discarded here as preamble since it precedes any turn header.
+    @Test
+    fun reload_binaryJunkContent_doesNotCrash() = runTest {
+        val dir = conversationsDir().apply { mkdirs() }
+        val name = "conv_" + SimpleDateFormat("yyyyMMddHHmmss", Locale.US).format(Date(nowMillis)) + ".md"
+        val junk = byteArrayOf(0x00, 0x01, 0xFF.toByte(), 0xFE.toByte(), 0xC0.toByte(), 0x80.toByte(), 0x0A)
+        File(dir, name).apply {
+            writeBytes(junk)
+            appendText("**Me** (09:15):\nafter the junk\n\n")
+        }
+
+        val vm = newViewModel()
+        advanceUntilIdle()
+
+        assertEquals(1, vm.messages.value.size)
+        assertEquals(Role.USER, vm.messages.value[0].role)
+        assertEquals("after the junk", vm.messages.value[0].text)
+    }
+
+    // (gate-audit) Process death between the user turn's append and the reply's arrival: only
+    //     the user turn made it to disk. A fresh ViewModel construction (simulating restart) must
+    //     resume with exactly that user turn present and no dangling generation state.
+    @Test
+    fun reload_afterProcessDeathMidExchange_resumesWithUserTurnOnly() = runTest {
+        val gate = CompletableDeferred<String>()
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } coAnswers { gate.await() }
+        val vm1 = newViewModel()
+        vm1.send("Only the user turn will be persisted")
+        testDispatcher.scheduler.runCurrent()
+        val file = vm1.sessionFile
+        assertTrue(file.readText().contains("Only the user turn will be persisted"))
+        assertFalse(file.readText().contains("**Agent**"))
+        // vm1's generate() call is left permanently suspended on `gate` — standing in for the
+        // process dying before a reply ever arrives. It is simply abandoned, never advanced.
+
+        val vm2 = newViewModel()
+        advanceUntilIdle()
+
+        assertEquals(1, vm2.messages.value.size)
+        assertEquals(Role.USER, vm2.messages.value[0].role)
+        assertEquals("Only the user turn will be persisted", vm2.messages.value[0].text)
+        assertFalse(vm2.isGenerating.value)
+        assertEquals(file.absolutePath, vm2.sessionFile.absolutePath)
+    }
+
+    // (gate-audit) A timeout must not brick the session: after it surfaces as an error, a
+    //     subsequent send() must still succeed normally.
+    @Test
+    fun send_llmTimesOut_sessionStillUsableAfterward() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } coAnswers {
+            withTimeout(1) { delay(10_000) }
+            "unreachable"
+        }
+        val vm = newViewModel()
+        vm.send("Will this time out?")
+        advanceUntilIdle()
+        assertNotNull(vm.error.value)
+
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Back to normal"
+        vm.send("Are we still working?")
+        advanceUntilIdle()
+
+        assertNull(vm.error.value)
+        assertFalse(vm.isGenerating.value)
+        assertEquals(3, vm.messages.value.size)
+        assertEquals(Role.MODEL, vm.messages.value[2].role)
+        assertEquals("Back to normal", vm.messages.value[2].text)
+        assertTrue(vm.sessionFile.readText().contains("Back to normal"))
+    }
+
     // Note: newSessionFile()'s collision-avoiding retry loop (ported verbatim from notetaker) is
     // only reachable in this slice's construction path when NO today-dated file exists yet — any
     // existing conv_<today>*.md is instead picked up by findTodaysSessionFile() and *resumed*, not

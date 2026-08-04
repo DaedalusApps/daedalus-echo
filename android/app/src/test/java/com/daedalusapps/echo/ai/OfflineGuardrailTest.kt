@@ -3,6 +3,7 @@ package com.daedalusapps.echo.ai
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.daedalusapps.echo.data.model.Recording
+import com.daedalusapps.echo.viewmodel.IDEATION_SYSTEM_PROMPT
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
@@ -75,6 +76,11 @@ class OfflineGuardrailTest {
     fun noteQuestionPrompt_containsGuardrailExactlyOnce() {
         val prompt = buildNoteQuestionPrompt("Title", "Summary")
         assertEquals(1, countOccurrences(prompt, OFFLINE_GUARDRAIL))
+    }
+
+    @Test
+    fun ideationSystemPrompt_containsGuardrailExactlyOnce() {
+        assertEquals(1, countOccurrences(IDEATION_SYSTEM_PROMPT, OFFLINE_GUARDRAIL))
     }
 
     @Test

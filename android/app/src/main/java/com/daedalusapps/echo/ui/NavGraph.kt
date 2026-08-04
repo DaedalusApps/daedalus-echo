@@ -9,6 +9,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.daedalusapps.echo.ui.screens.AskHomeScreen
+import com.daedalusapps.echo.ui.screens.ConversationScreen
 import com.daedalusapps.echo.ui.screens.GlobalMindMapScreen
 import com.daedalusapps.echo.ui.screens.ModelDownloadScreen
 import com.daedalusapps.echo.ui.screens.NoteDetailScreen
@@ -17,6 +18,7 @@ import com.daedalusapps.echo.ui.screens.RecordingsScreen
 import com.daedalusapps.echo.ui.screens.SettingsScreen
 import com.daedalusapps.echo.ui.screens.SplashScreen
 import com.daedalusapps.echo.ui.screens.TodoScreen
+import com.daedalusapps.echo.viewmodel.ConversationViewModel
 import com.daedalusapps.echo.viewmodel.RecordingViewModel
 import com.daedalusapps.echo.viewmodel.TodoViewModel
 
@@ -24,7 +26,8 @@ import com.daedalusapps.echo.viewmodel.TodoViewModel
 fun NavGraph(
     navController: NavHostController,
     recordingViewModel: RecordingViewModel,
-    todoViewModel: TodoViewModel
+    todoViewModel: TodoViewModel,
+    conversationViewModel: ConversationViewModel
 ) {
     NavHost(navController = navController, startDestination = "splash") {
 
@@ -53,7 +56,15 @@ fun NavGraph(
                 onNavigateToRecordings = { navController.navigate("recordings") },
                 onNavigateToExpandedMap = { navController.navigate("global_mind_map") },
                 onNavigateToSettings = { navController.navigate("settings") },
-                onNavigateToTodos = { navController.navigate("todos") }
+                onNavigateToTodos = { navController.navigate("todos") },
+                onNavigateToConversation = { navController.navigate("conversation") }
+            )
+        }
+
+        composable("conversation") {
+            ConversationScreen(
+                conversationViewModel = conversationViewModel,
+                onBack = { navController.popBackStack() }
             )
         }
 

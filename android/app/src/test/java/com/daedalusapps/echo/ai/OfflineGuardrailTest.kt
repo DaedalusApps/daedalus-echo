@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.daedalusapps.echo.data.model.Recording
 import com.daedalusapps.echo.viewmodel.IDEATION_SYSTEM_PROMPT
+import com.daedalusapps.echo.viewmodel.SUMMARY_PROMPT
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
@@ -81,6 +82,11 @@ class OfflineGuardrailTest {
     @Test
     fun ideationSystemPrompt_containsGuardrailExactlyOnce() {
         assertEquals(1, countOccurrences(IDEATION_SYSTEM_PROMPT, OFFLINE_GUARDRAIL))
+    }
+
+    @Test
+    fun summaryPrompt_containsGuardrailExactlyOnce() {
+        assertEquals(1, countOccurrences(SUMMARY_PROMPT, OFFLINE_GUARDRAIL))
     }
 
     @Test

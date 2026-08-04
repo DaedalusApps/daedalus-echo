@@ -5,20 +5,27 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.daedalusapps.echo.ai.ChatTurn
+import com.daedalusapps.echo.ai.EmbeddingService
 import com.daedalusapps.echo.ai.LocalLlmService
 import com.daedalusapps.echo.ai.OFFLINE_GUARDRAIL
 import com.daedalusapps.echo.ai.Role
 import com.daedalusapps.echo.ai.aiTextBudget
+import com.daedalusapps.echo.ai.analyzeTranscript
+import com.daedalusapps.echo.data.RecordingRepository
+import com.daedalusapps.echo.data.db.AppDatabase
+import com.daedalusapps.echo.data.model.Recording
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -65,12 +72,18 @@ private val TURN_HEADER_REGEX = Regex("""^\*\*(Me|Agent)\*\* \((\d{2}):(\d{2})\)
  * a failed send never bricks the session, and a bounded live context so long conversations don't
  * grow the prompt without limit (see [buildLiveContext]).
  *
- * Deliberately excluded for now (later issues): endSession/analysis (EB.5), and all voice input
- * / TTS / instant-send / auto-listen / replay behavior.
+ * Also includes ending a session into an analyzed library note (EB.5): endSession() saves the
+ * transcript as a Recording, runs it through the same analysis pipeline a transcribed local
+ * recording gets, marks the session file as ended, and rotates to a fresh session.
+ *
+ * Deliberately excluded for now (later issues): all voice input / TTS / instant-send /
+ * auto-listen / replay behavior.
  */
 class ConversationViewModel @JvmOverloads constructor(
     application: Application,
     private val llm: LocalLlmService = LocalLlmService.getInstance(application),
+    private val repo: RecordingRepository = RecordingRepository(AppDatabase.getInstance(application).recordingDao()),
+    private val embedder: EmbeddingService = EmbeddingService(application),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val contextBudgetChars: Int = (aiTextBudget(application) * CONVERSATION_CONTEXT_FRACTION).toInt()
@@ -108,8 +121,19 @@ class ConversationViewModel @JvmOverloads constructor(
 
     fun clearError() { _error.value = null }
 
-    // Tracks the coroutine running performSend(), so a future Stop control (later issue) has
-    // something to cancel.
+    /** Rotates to a fresh session file (a new "meeting"); the previous transcript stays on disk. */
+    fun startNewSession() {
+        if (_isGenerating.value) return
+        viewModelScope.launch {
+            loadJob.join()
+            sessionFile = withContext(ioDispatcher) { newSessionFile(conversationsDir(getApplication())) }
+            _messages.value = emptyList()
+            _error.value = null
+        }
+    }
+
+    // Tracks the coroutine running performSend() or endSession()'s analysis, so stopGenerating()
+    // has something to cancel either way.
     private var generationJob: Job? = null
 
     fun send(text: String) {
@@ -122,10 +146,97 @@ class ConversationViewModel @JvmOverloads constructor(
         generationJob = viewModelScope.launch { performSend(trimmed) }
     }
 
-    /** Cancels the in-flight generation started by [send]. Wired to UI in a later issue. */
+    /** Cancels the in-flight generation started by [send] or [endSession]. */
     fun stopGenerating() {
         generationJob?.cancel()
     }
+
+    /**
+     * Ends the current "meeting with the agent": converts the transcript into a [Recording]
+     * through the normal save path, runs it through the same analysis pipeline a transcribed
+     * local recording gets, marks the session file as ended so it is never auto-resumed, then
+     * rotates to a fresh session. A no-op if the session has no messages yet.
+     *
+     * Analysis runs unconditionally, unlike a local audio recording, which only auto-analyzes when
+     * the `auto_process` pref is on: that pref gates work kicked off automatically by capture
+     * finishing, whereas tapping End is itself the explicit request for the summarized note.
+     *
+     * Tracked in [generationJob] — the same field [send] uses — so [stopGenerating] can actually
+     * cancel it. A cancellation here is treated exactly like the existing analysis-failure path:
+     * the session stays live and resumable — no rename, no message clear, no rotation — and the
+     * Recording row saved before cancellation may remain (a harmless upsert; retrying End
+     * overwrites it). The one exception is a Stop that arrives once the rotation has begun: that
+     * tail is [NonCancellable], so the End simply completes. Unlike a failure, no error is
+     * surfaced: cancellation isn't a failure (mirrors [performSend]'s `CancellationException`
+     * handling), while a real [TimeoutCancellationException] from the analysis LLM call still
+     * surfaces as an error.
+     */
+    fun endSession() {
+        if (_isGenerating.value) return
+        // Claimed synchronously on the caller (main) thread so a double-tap — or a send() landing
+        // in the same frame — cannot slip past the guard before the coroutine body runs.
+        _isGenerating.value = true
+        _error.value = null
+        generationJob = viewModelScope.launch {
+            try {
+                loadJob.join()
+                val currentMessages = _messages.value
+                if (currentMessages.isEmpty()) return@launch
+
+                val filename = sessionFile.name
+                val transcript = buildTranscript(currentMessages)
+                repo.save(
+                    Recording(
+                        filename = filename,
+                        transcript = transcript,
+                        createdAt = clock()
+                    )
+                )
+                analyzeTranscript(getApplication(), llm, embedder, repo, filename, transcript)
+
+                // Renamed only once the work above succeeded, so a failure leaves the session
+                // intact and resumable; retrying End re-saves under the same filename (the
+                // primary key), which updates that row rather than adding a second one.
+                // NonCancellable because the rotation spans suspension points: a Stop landing
+                // between them would leave the session half-ended — renamed on disk, yet still
+                // live in memory pointing at a path that no longer exists, so the next End could
+                // never rename it again. Either the whole rotation happens or none of it.
+                withContext(NonCancellable) {
+                    val ended = withContext(ioDispatcher) {
+                        val endedFile = File(sessionFile.parentFile, "${sessionFile.nameWithoutExtension}.ended.md")
+                        sessionFile.renameTo(endedFile)
+                    }
+                    if (!ended) throw IOException("Could not mark ${sessionFile.name} as ended")
+
+                    sessionFile = withContext(ioDispatcher) { newSessionFile(conversationsDir(getApplication())) }
+                    _messages.value = emptyList()
+                }
+            } catch (e: TimeoutCancellationException) {
+                // A real failure from the analysis LLM call's own timeout, not a stopGenerating()
+                // cancellation — must be caught before the CancellationException branch below so
+                // it still reaches the user as an error.
+                Log.e("ConversationViewModel", "endSession failed", e)
+                _error.value = e.message ?: "Failed to end session"
+            } catch (e: CancellationException) {
+                // stopGenerating() cancellation, not a failure: no error, session left exactly as
+                // it was before this attempt. Rethrown so the coroutine actually completes as
+                // cancelled.
+                throw e
+            } catch (e: Exception) {
+                Log.e("ConversationViewModel", "endSession failed", e)
+                _error.value = e.message ?: "Failed to end session"
+            } finally {
+                _isGenerating.value = false
+            }
+        }
+    }
+
+    /** Renders messages as a speaker-labeled meeting transcript, e.g. "Me: ..." / "Agent: ...". */
+    private fun buildTranscript(messages: List<ChatMessage>): String =
+        messages.joinToString("\n\n") { message ->
+            val label = if (message.role == Role.USER) "Me" else "Agent"
+            "$label: ${message.text}"
+        }
 
     /**
      * The actual send pipeline. Callers MUST have already claimed [_isGenerating] (synchronously,
@@ -326,5 +437,6 @@ class ConversationViewModel @JvmOverloads constructor(
     override fun onCleared() {
         super.onCleared()
         generationJob?.cancel()
+        embedder.close()
     }
 }

@@ -18,6 +18,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -48,8 +50,9 @@ import com.daedalusapps.echo.viewmodel.ChatMessage
 import com.daedalusapps.echo.viewmodel.ConversationViewModel
 
 /**
- * Minimal text-chat surface for conversation mode (#20 / EB.3). Overflow menu, end-session, and
- * voice controls are added in later issues.
+ * Minimal text-chat surface for conversation mode (#20 / EB.3), plus an End session action that
+ * saves and analyzes the transcript (#22 / EB.5) and an inline Stop for the in-flight send/end.
+ * Overflow menu and voice controls are added in later issues.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -93,10 +96,19 @@ fun ConversationScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
+                actions = {
+                    IconButton(
+                        onClick = { conversationViewModel.endSession() },
+                        enabled = messages.isNotEmpty() && !isGenerating
+                    ) {
+                        Icon(Icons.Default.Done, contentDescription = "End session")
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         },
@@ -140,10 +152,18 @@ fun ConversationScreen(
                     maxLines = 4
                 )
                 IconButton(
-                    onClick = sendCurrentInput,
-                    enabled = !isGenerating && input.isNotBlank()
+                    // While generating (a send, or an endSession() analysis), this becomes an
+                    // inline Stop button: tapping it aborts the in-flight work instead of sending.
+                    onClick = {
+                        if (isGenerating) conversationViewModel.stopGenerating() else sendCurrentInput()
+                    },
+                    enabled = isGenerating || input.isNotBlank()
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
+                    if (isGenerating) {
+                        Icon(Icons.Default.Stop, contentDescription = "Stop")
+                    } else {
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
+                    }
                 }
             }
         }

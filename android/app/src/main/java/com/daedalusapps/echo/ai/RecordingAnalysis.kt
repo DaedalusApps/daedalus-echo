@@ -7,6 +7,9 @@ import com.daedalusapps.echo.data.RecordingRepository
  * Runs the Gemma summarize/mind-map analysis plus embedding generation against an already-known
  * transcript and saves the result via [repo]. Extracted from RecordingViewModel.doAnalyze so this
  * post-transcript pipeline is defined exactly once.
+ *
+ * [onProgress] receives the user-facing stage labels a caller with a progress indicator can show;
+ * chunked transcripts report per-chunk progress because they take minutes.
  */
 suspend fun analyzeTranscript(
     context: Context,
@@ -14,16 +17,20 @@ suspend fun analyzeTranscript(
     embedder: EmbeddingService,
     repo: RecordingRepository,
     filename: String,
-    transcript: String
+    transcript: String,
+    onProgress: ((String) -> Unit)? = null
 ) {
     llm.ensureLoaded()
     val chunks = chunkTranscript(transcript, aiTextBudget(context))
     val rawResponse = if (chunks.size == 1) {
+        onProgress?.invoke("Analyzing with Gemma…")
         llm.generate(activePrompt(context), chunks[0])
     } else {
-        val chunkSummaries = chunks.map { chunk ->
+        val chunkSummaries = chunks.mapIndexed { i, chunk ->
+            onProgress?.invoke("Analyzing part ${i + 1} of ${chunks.size}…")
             llm.generate(CHUNK_SUMMARY_PROMPT, chunk)
         }
+        onProgress?.invoke("Synthesizing results…")
         llm.generate(activePrompt(context), chunkSummaries.joinToString("\n\n"))
     }
     val cleanJson = stripCodeFences(rawResponse)

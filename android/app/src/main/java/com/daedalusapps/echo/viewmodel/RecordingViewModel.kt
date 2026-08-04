@@ -385,8 +385,9 @@ class RecordingViewModel @JvmOverloads constructor(
 
             // Step 2: Summarize + mind map with Gemma (chunked for long transcripts), plus
             // embedding generation — extracted to analyzeTranscript so this pipeline is shared.
-            _syncProgress.value = "Analyzing with Gemma…"
-            analyzeTranscript(getApplication(), llm, embedder, repo, filename, transcript)
+            analyzeTranscript(getApplication(), llm, embedder, repo, filename, transcript) {
+                _syncProgress.value = it
+            }
 
             _currentNote.value = repo.get(filename)
         } catch (e: Exception) {

@@ -105,4 +105,28 @@ class RecordingAnalysisTest {
         coVerify(exactly = 0) { embedder.embed(any()) }
         coVerify(exactly = 0) { repo.updateEmbedding(any(), any()) }
     }
+
+    @Test
+    fun singlePass_reportsAnalyzingProgress() = runTest {
+        val transcript = "short transcript"
+        coEvery { llm.generate(any(), any()) } returns jsonResponse
+        val updates = mutableListOf<String>()
+
+        analyzeTranscript(context, llm, embedder, repo, "note.mp3", transcript) { updates.add(it) }
+
+        assertEquals(listOf("Analyzing with Gemma…"), updates)
+    }
+
+    @Test
+    fun multiChunk_reportsPerChunkThenSynthesisProgress() = runTest {
+        val transcript = "word ".repeat(3000)
+        coEvery { llm.generate(any(), any()) } returns jsonResponse
+        val updates = mutableListOf<String>()
+
+        analyzeTranscript(context, llm, embedder, repo, "note.mp3", transcript) { updates.add(it) }
+
+        assertEquals("Synthesizing results…", updates.last())
+        assertEquals(updates.size - 1, updates.count { it.startsWith("Analyzing part ") })
+        assertEquals("Analyzing part 1 of ${updates.size - 1}…", updates.first())
+    }
 }

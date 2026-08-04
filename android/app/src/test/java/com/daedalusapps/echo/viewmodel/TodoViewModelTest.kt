@@ -89,7 +89,7 @@ class TodoViewModelTest {
             TodoItem(id = 1, text = "Existing done task", isDone = true),
             TodoItem(id = 2, text = "Existing open task", isDone = false)
         ))
-        coEvery { llm.generate(any(), any()) } returns "- Call the vendor\n- Send the report"
+        coEvery { llm.generate(any(), any<String>()) } returns "- Call the vendor\n- Send the report"
 
         viewModel.updateFromRecordings(24)
         advanceUntilIdle()
@@ -111,7 +111,7 @@ class TodoViewModelTest {
         )
         coEvery { todoDao.getAllFlow() } returns flowOf(listOf(TodoItem(id = 1, text = "Buy milk")))
         // Normalized duplicate ("buy milk") plus a genuinely new one.
-        coEvery { llm.generate(any(), any()) } returns "- buy milk\n- Wash the car"
+        coEvery { llm.generate(any(), any<String>()) } returns "- buy milk\n- Wash the car"
 
         viewModel.updateFromRecordings(24)
         advanceUntilIdle()
@@ -131,13 +131,13 @@ class TodoViewModelTest {
         )
         coEvery { todoDao.getAllFlow() } returns flowOf(emptyList())
         // Both batches return the same task.
-        coEvery { llm.generate(any(), any()) } returns "- Follow up with Sam"
+        coEvery { llm.generate(any(), any<String>()) } returns "- Follow up with Sam"
 
         viewModel.updateFromRecordings(24)
         advanceUntilIdle()
 
         // Two generate calls (two batches), but the duplicate task inserted only once.
-        coVerify(exactly = 2) { llm.generate(any(), any()) }
+        coVerify(exactly = 2) { llm.generate(any(), any<String>()) }
         coVerify(exactly = 1) { todoDao.insert(match { it.text == "Follow up with Sam" }) }
         assertEquals(1, viewModel.lastExtractCount.value)
     }
@@ -202,7 +202,7 @@ class TodoViewModelTest {
         advanceUntilIdle()
 
         // No usable note blocks -> nothing to send to the LLM.
-        coVerify(exactly = 0) { llm.generate(any(), any()) }
+        coVerify(exactly = 0) { llm.generate(any(), any<String>()) }
         assertEquals(0, viewModel.lastExtractCount.value)
     }
 
@@ -214,12 +214,12 @@ class TodoViewModelTest {
             bigRecording("b.mp3", "B", "y")
         )
         coEvery { todoDao.getAllFlow() } returns flowOf(emptyList())
-        coEvery { llm.generate(any(), any()) } returns "- none"
+        coEvery { llm.generate(any(), any<String>()) } returns "- none"
 
         viewModel.updateFromRecordings(24)
         advanceUntilIdle()
 
-        coVerify(exactly = 2) { llm.generate(any(), any()) }
+        coVerify(exactly = 2) { llm.generate(any(), any<String>()) }
     }
 
     // 5b. Batching respects a smaller injected AI text budget: two moderate-size recordings
@@ -233,13 +233,13 @@ class TodoViewModelTest {
             Recording(filename = "b.mp3", title = "B", summary = "y".repeat(2_000))
         )
         coEvery { todoDao.getAllFlow() } returns flowOf(emptyList())
-        coEvery { llm.generate(any(), any()) } returns "- none"
+        coEvery { llm.generate(any(), any<String>()) } returns "- none"
 
         viewModel.updateFromRecordings(24)
         advanceUntilIdle()
 
         // Combined blocks (~4,020 chars) exceed the derived 3,000-char batch cap -> 2 batches.
-        coVerify(exactly = 2) { llm.generate(any(), any()) }
+        coVerify(exactly = 2) { llm.generate(any(), any<String>()) }
     }
 
     // 6. Error path: llm.generate throws -> extractError set, isExtracting false; items already
@@ -252,7 +252,7 @@ class TodoViewModelTest {
         )
         coEvery { todoDao.getAllFlow() } returns flowOf(emptyList())
         // First batch succeeds, second batch throws.
-        coEvery { llm.generate(any(), any()) } returnsMany listOf("- First batch task") andThenThrows RuntimeException("boom")
+        coEvery { llm.generate(any(), any<String>()) } returnsMany listOf("- First batch task") andThenThrows RuntimeException("boom")
 
         viewModel.updateFromRecordings(24)
         advanceUntilIdle()
@@ -270,7 +270,7 @@ class TodoViewModelTest {
             Recording(filename = "a.mp3", title = "A", summary = "notes")
         )
         coEvery { todoDao.getAllFlow() } returns flowOf(emptyList())
-        coEvery { llm.generate(any(), any()) } returns "- Task one\n- Task two\n- Task three"
+        coEvery { llm.generate(any(), any<String>()) } returns "- Task one\n- Task two\n- Task three"
 
         viewModel.updateFromRecordings(24)
         advanceUntilIdle()
@@ -285,7 +285,7 @@ class TodoViewModelTest {
         viewModel.updateFromRecordings(24)
         advanceUntilIdle()
 
-        coVerify(exactly = 0) { llm.generate(any(), any()) }
+        coVerify(exactly = 0) { llm.generate(any(), any<String>()) }
         assertEquals(0, viewModel.lastExtractCount.value)
     }
 

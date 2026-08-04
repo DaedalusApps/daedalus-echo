@@ -12,6 +12,35 @@ import kotlin.coroutines.resume
 
 import android.util.Log
 
+enum class Role { USER, MODEL }
+
+data class ChatTurn(val role: Role, val text: String)
+
+// Gemma instruction-tuned chat template: <start_of_turn>user\n...\n<end_of_turn>\n<start_of_turn>model\n
+// Gemma has no system role, so the system prompt is folded into the first user turn.
+internal fun buildGemmaPrompt(systemPrompt: String, turns: List<ChatTurn>): String {
+    require(turns.isNotEmpty()) { "turns must not be empty" }
+    require(turns.first().role == Role.USER) { "first turn must be USER" }
+    require(turns.last().role == Role.USER) { "last turn must be USER" }
+    for (i in 1 until turns.size) {
+        require(turns[i].role != turns[i - 1].role) { "consecutive turns must not share the same role" }
+    }
+    return buildString {
+        turns.forEachIndexed { index, turn ->
+            append("<start_of_turn>")
+            append(if (turn.role == Role.USER) "user" else "model")
+            append("\n")
+            if (index == 0 && turn.role == Role.USER && systemPrompt.isNotBlank()) {
+                append(systemPrompt)
+                append("\n\n")
+            }
+            append(turn.text)
+            append("<end_of_turn>\n")
+        }
+        append("<start_of_turn>model\n")
+    }
+}
+
 class LocalLlmService(private val context: Context) {
 
     @Volatile
@@ -53,21 +82,14 @@ class LocalLlmService(private val context: Context) {
     }
 
     suspend fun generate(systemPrompt: String, userText: String): String =
+        generate(systemPrompt, listOf(ChatTurn(Role.USER, userText)))
+
+    suspend fun generate(systemPrompt: String, turns: List<ChatTurn>): String =
         mutex.withLock {
             withContext(Dispatchers.IO) {
                 val llm = inference ?: error("Model not loaded — call ensureLoaded() first")
-                Log.d("DaedalusAI", "Generating response for input (length: ${userText.length})...")
-                // Gemma 2B instruction-tuned format: <start_of_turn>user\n...\n<end_of_turn>\n<start_of_turn>model\n
-                val prompt = buildString {
-                    append("<start_of_turn>user\n")
-                    if (systemPrompt.isNotBlank()) {
-                        append(systemPrompt)
-                        append("\n\n")
-                    }
-                    append(userText)
-                    append("<end_of_turn>\n")
-                    append("<start_of_turn>model\n")
-                }
+                Log.d("DaedalusAI", "Generating response for ${turns.size} turn(s)...")
+                val prompt = buildGemmaPrompt(systemPrompt, turns)
                 try {
                     // generateResponse() crashes in MediaPipe 0.10.35 via nativePredictSync.
                     // generateResponseAsync uses a different native path that is stable.

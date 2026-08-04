@@ -83,7 +83,7 @@ class RecordingViewModelTest {
         coEvery { embedder.embed(any()) } returns floatArrayOf(0.1f, 0.2f)
         every { repo.allRecordings } returns flowOf(recordings)
         coEvery { repo.semanticSearch(any(), any(), any()) } returns recordings
-        coEvery { llm.generate(any(), any()) } returns answer
+        coEvery { llm.generate(any(), any<String>()) } returns answer
 
         viewModel.askLibraryQuestion(question)
         advanceUntilIdle()

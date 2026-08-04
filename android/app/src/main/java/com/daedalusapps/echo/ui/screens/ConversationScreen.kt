@@ -22,6 +22,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
@@ -31,6 +33,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -59,9 +62,9 @@ import com.daedalusapps.echo.viewmodel.ConversationViewModel
 
 /**
  * Minimal text-chat surface for conversation mode (#20 / EB.3), plus an End session action that
- * saves and analyzes the transcript (#22 / EB.5), an inline Stop for the in-flight send/end, and
- * push-to-talk voice input (#23 / EC.1). Overflow menu, TTS, and instant-send are added in later
- * issues.
+ * saves and analyzes the transcript (#22 / EB.5), an inline Stop for the in-flight send/end,
+ * push-to-talk voice input (#23 / EC.1), and a spoken-replies toggle (#24 / EC.2). The voice/rate
+ * pickers and instant-send are added in later issues.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,6 +78,8 @@ fun ConversationScreen(
     val isRecordingVoice by conversationViewModel.isRecordingVoice.collectAsState()
     val isTranscribing by conversationViewModel.isTranscribing.collectAsState()
     val voiceTranscript by conversationViewModel.voiceTranscript.collectAsState()
+    val ttsEnabled by conversationViewModel.ttsEnabled.collectAsState()
+    val isSpeaking by conversationViewModel.isSpeaking.collectAsState()
 
     val context = LocalContext.current
     var input by remember { mutableStateOf("") }
@@ -113,10 +118,14 @@ fun ConversationScreen(
         }
     }
 
-    // Leaving the screen abandons an in-progress recording; the ViewModel outlives this
-    // composable, so leaving it running would otherwise hold the mic indefinitely.
+    // Leaving the screen abandons an in-progress recording and stops any in-progress speech; the
+    // ViewModel outlives this composable, so leaving either running would otherwise hold the mic
+    // or keep talking after the user navigated away.
     DisposableEffect(Unit) {
-        onDispose { conversationViewModel.cancelVoiceInput() }
+        onDispose {
+            conversationViewModel.cancelVoiceInput()
+            conversationViewModel.stopSpeaking()
+        }
     }
 
     val sendCurrentInput = {
@@ -137,6 +146,24 @@ fun ConversationScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        // Tapping while speaking stops that reply's speech without flipping the
+                        // enabled toggle; otherwise it behaves as a mute/unmute switch.
+                        onClick = {
+                            if (isSpeaking) conversationViewModel.stopSpeaking()
+                            else conversationViewModel.setTtsEnabled(!ttsEnabled)
+                        }
+                    ) {
+                        if (ttsEnabled) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.VolumeUp,
+                                contentDescription = if (isSpeaking) "Speaking — tap to stop" else "Spoken replies on",
+                                tint = if (isSpeaking) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                            )
+                        } else {
+                            Icon(Icons.AutoMirrored.Filled.VolumeOff, contentDescription = "Spoken replies off")
+                        }
+                    }
                     IconButton(
                         onClick = { conversationViewModel.endSession() },
                         enabled = messages.isNotEmpty() && !isGenerating

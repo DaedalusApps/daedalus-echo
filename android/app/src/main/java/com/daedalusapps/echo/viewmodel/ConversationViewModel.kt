@@ -1,15 +1,19 @@
 package com.daedalusapps.echo.viewmodel
 
 import android.app.Application
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.daedalusapps.echo.ai.AndroidSpeechService
 import com.daedalusapps.echo.ai.ChatTurn
 import com.daedalusapps.echo.ai.EmbeddingService
 import com.daedalusapps.echo.ai.LocalLlmService
 import com.daedalusapps.echo.ai.OFFLINE_GUARDRAIL
 import com.daedalusapps.echo.ai.Role
+import com.daedalusapps.echo.ai.SpeechService
 import com.daedalusapps.echo.ai.TranscriptionService
+import com.daedalusapps.echo.ai.VoiceInfo
 import com.daedalusapps.echo.ai.aiTextBudget
 import com.daedalusapps.echo.ai.analyzeTranscript
 import com.daedalusapps.echo.ai.isWhisperReady
@@ -66,6 +70,9 @@ private const val TAIL_MESSAGE_COUNT = 4
 // context past the budget the trip-check assumes.
 private const val SUMMARY_BUDGET_FRACTION = 0.25
 
+/** SharedPreferences key for whether spoken replies (Android TTS) are on in conversation mode. */
+const val CONVERSATION_TTS_ENABLED_KEY = "conversation_tts_enabled"
+
 private val SESSION_FILENAME_REGEX = Regex("""conv_(\d{14})\.md""")
 private val TURN_HEADER_REGEX = Regex("""^\*\*(Me|Agent)\*\* \((\d{2}):(\d{2})\):$""")
 
@@ -79,8 +86,12 @@ private val TURN_HEADER_REGEX = Regex("""^\*\*(Me|Agent)\*\* \((\d{2}):(\d{2})\)
  * transcript as a Recording, runs it through the same analysis pipeline a transcribed local
  * recording gets, marks the session file as ended, and rotates to a fresh session.
  *
- * Deliberately excluded for now (later issues): all voice input / TTS / instant-send /
- * auto-listen / replay behavior.
+ * Also includes on-device spoken replies (#24 / EC.2): a lazily-built [SpeechService] speaks a
+ * MODEL reply when [ttsEnabled] is on, never binding the engine for a user who leaves it off (see
+ * [ttsDelegate]).
+ *
+ * Deliberately excluded for now (later issues): the voice/rate picker UI, instant-send, and
+ * auto-listen/replay behavior.
  */
 class ConversationViewModel @JvmOverloads constructor(
     application: Application,
@@ -91,7 +102,8 @@ class ConversationViewModel @JvmOverloads constructor(
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val contextBudgetChars: Int = (aiTextBudget(application) * CONVERSATION_CONTEXT_FRACTION).toInt(),
     private val audioRecorderProvider: () -> AudioRecorder = { AudioRecorder(application) },
-    private val transcriptionServiceProvider: () -> TranscriptionService = { TranscriptionService(application) }
+    private val transcriptionServiceProvider: () -> TranscriptionService = { TranscriptionService(application) },
+    private val ttsProvider: () -> SpeechService = { AndroidSpeechService(application) }
 ) : AndroidViewModel(application) {
 
     // Rolling summary of messages already folded out of the live context, and the index into
@@ -125,6 +137,70 @@ class ConversationViewModel @JvmOverloads constructor(
     val voiceTranscript: StateFlow<String?> = _voiceTranscript
 
     fun clearVoiceTranscript() { _voiceTranscript.value = null }
+
+    // Spoken replies via Android TTS (#24 / EC.2). Lazy so construction doesn't bind the
+    // TextToSpeech engine for users who never turn spoken replies on — see stopSpeaking().
+    private val ttsDelegate = lazy {
+        val service = ttsProvider()
+        // The listener may be invoked off the main thread (TextToSpeech's UtteranceProgressListener
+        // callbacks are not guaranteed to arrive on it); MutableStateFlow.value is thread-safe, so
+        // no dispatching back to the main thread is needed here.
+        service.setOnSpeakingChangedListener { speaking -> _isSpeaking.value = speaking }
+        // Same thread-safety note as above applies to the ready callback: it also fires
+        // immediately with the current known state at registration, so a caller that checks after
+        // init already finished still sees the right value instead of hanging on "not ready".
+        service.setOnReadyChangedListener { ready -> _ttsReady.value = ready }
+        service
+    }
+    private val tts by ttsDelegate
+
+    // Whether TTS is actively speaking: drives a speaker/mute icon's active state.
+    private val _isSpeaking = MutableStateFlow(false)
+    val isSpeaking: StateFlow<Boolean> = _isSpeaking
+
+    // Whether the (lazily built) speech engine has finished initializing. Three states, because
+    // "still starting" and "the engine failed to start" must not look the same: null = not built
+    // yet or init still running, true = ready, false = init failed.
+    private val _ttsReady = MutableStateFlow<Boolean?>(null)
+    val ttsReady: StateFlow<Boolean?> = _ttsReady
+
+    private val _ttsEnabled = MutableStateFlow(
+        application.getSharedPreferences("daedalus_prefs", Context.MODE_PRIVATE)
+            .getBoolean(CONVERSATION_TTS_ENABLED_KEY, false)
+    )
+    val ttsEnabled: StateFlow<Boolean> = _ttsEnabled
+
+    /**
+     * Stops any in-progress speech, e.g. when the screen is dismissed or the user mutes.
+     *
+     * Also the single place the engine gets built: it is touched only when spoken replies are on
+     * (or were on earlier this session), so the toggle staying off means the engine is never
+     * bound. Building it here rather than at speak() time matters — TextToSpeech initializes
+     * asynchronously and reports unavailable until it finishes, so an engine first touched when a
+     * reply is ready would silently drop that reply.
+     */
+    fun stopSpeaking() {
+        if (_ttsEnabled.value || ttsDelegate.isInitialized()) tts.stop()
+    }
+
+    fun setTtsEnabled(enabled: Boolean) {
+        _ttsEnabled.value = enabled
+        // Muting mid-reply must silence the reply already being spoken.
+        if (!enabled) stopSpeaking()
+        getApplication<Application>()
+            .getSharedPreferences("daedalus_prefs", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(CONVERSATION_TTS_ENABLED_KEY, enabled)
+            .apply()
+    }
+
+    /**
+     * Voices available for a future picker UI (#25); empty when TTS is unavailable. Also empty —
+     * without touching the engine — when spoken replies are off and the engine was never built:
+     * merely checking must not bind a TextToSpeech engine the user isn't using.
+     */
+    fun availableVoices(): List<VoiceInfo> =
+        if (_ttsEnabled.value || ttsDelegate.isInitialized()) tts.availableVoices() else emptyList()
 
     // Auto-listen must never spin on silence once it exists (#30): a blank transcription in
     // stopVoiceInput() arms this so the next auto-listen trigger can skip itself. Unused until
@@ -175,10 +251,11 @@ class ConversationViewModel @JvmOverloads constructor(
 
     /**
      * Starts voice input the way a big mic button on a voice-only surface would (mirrors
-     * notetaker's P9.3): echo has no TTS yet to interrupt, so this simply delegates to
-     * [startVoiceInput] for now — a later issue (#24) extends this once spoken replies exist.
+     * notetaker's P9.3): stops any in-progress spoken reply first, so the recording never starts
+     * while a reply is still audibly being spoken over it, then delegates to [startVoiceInput].
      */
     fun startVoiceInputInterruptingSpeech() {
+        stopSpeaking()
         startVoiceInput()
     }
 
@@ -235,6 +312,7 @@ class ConversationViewModel @JvmOverloads constructor(
     /** Rotates to a fresh session file (a new "meeting"); the previous transcript stays on disk. */
     fun startNewSession() {
         if (_isGenerating.value) return
+        stopSpeaking()
         viewModelScope.launch {
             loadJob.join()
             sessionFile = withContext(ioDispatcher) { newSessionFile(conversationsDir(getApplication())) }
@@ -250,6 +328,7 @@ class ConversationViewModel @JvmOverloads constructor(
     fun send(text: String) {
         val trimmed = text.trim()
         if (trimmed.isEmpty() || _isGenerating.value) return
+        stopSpeaking()
         // Claimed synchronously on the caller (main) thread so a rapid double-send cannot slip
         // through before the coroutine body runs.
         _isGenerating.value = true
@@ -284,6 +363,7 @@ class ConversationViewModel @JvmOverloads constructor(
      */
     fun endSession() {
         if (_isGenerating.value) return
+        stopSpeaking()
         // Claimed synchronously on the caller (main) thread so a double-tap — or a send() landing
         // in the same frame — cannot slip past the guard before the coroutine body runs.
         _isGenerating.value = true
@@ -367,6 +447,7 @@ class ConversationViewModel @JvmOverloads constructor(
             val modelMessage = ChatMessage(Role.MODEL, reply, clock())
             _messages.value = _messages.value + modelMessage
             appendToFile(modelMessage)
+            if (_ttsEnabled.value && tts.isAvailable) tts.speak(reply)
         } catch (e: TimeoutCancellationException) {
             // generate()'s 3-minute timeout surfaces as a CancellationException subtype, but it is
             // a real failure rather than a stopGenerating() cancellation — must be caught before
@@ -550,5 +631,6 @@ class ConversationViewModel @JvmOverloads constructor(
         generationJob?.cancel()
         cancelVoiceInput()
         embedder.close()
+        if (ttsDelegate.isInitialized()) tts.shutdown()
     }
 }

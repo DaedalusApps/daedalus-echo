@@ -1,5 +1,9 @@
 package com.daedalusapps.echo.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -36,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -44,15 +50,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.daedalusapps.echo.ai.Role
 import com.daedalusapps.echo.viewmodel.ChatMessage
 import com.daedalusapps.echo.viewmodel.ConversationViewModel
 
 /**
  * Minimal text-chat surface for conversation mode (#20 / EB.3), plus an End session action that
- * saves and analyzes the transcript (#22 / EB.5) and an inline Stop for the in-flight send/end.
- * Overflow menu and voice controls are added in later issues.
+ * saves and analyzes the transcript (#22 / EB.5), an inline Stop for the in-flight send/end, and
+ * push-to-talk voice input (#23 / EC.1). Overflow menu, TTS, and instant-send are added in later
+ * issues.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,10 +72,26 @@ fun ConversationScreen(
     val messages by conversationViewModel.messages.collectAsState()
     val isGenerating by conversationViewModel.isGenerating.collectAsState()
     val error by conversationViewModel.error.collectAsState()
+    val isRecordingVoice by conversationViewModel.isRecordingVoice.collectAsState()
+    val isTranscribing by conversationViewModel.isTranscribing.collectAsState()
+    val voiceTranscript by conversationViewModel.voiceTranscript.collectAsState()
 
+    val context = LocalContext.current
     var input by remember { mutableStateOf("") }
     val snackbar = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
+
+    val recordAudioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) conversationViewModel.startVoiceInput() }
+
+    val startVoiceInput = {
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        if (hasPermission) conversationViewModel.startVoiceInput()
+        else recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+    }
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
@@ -77,6 +102,21 @@ fun ConversationScreen(
             snackbar.showSnackbar(it)
             conversationViewModel.clearError()
         }
+    }
+
+    // Appended rather than assigned: the field stays editable while transcription runs, and
+    // overwriting would silently drop whatever the user typed in the meantime.
+    LaunchedEffect(voiceTranscript) {
+        voiceTranscript?.let {
+            input = if (input.isBlank()) it else "${input.trimEnd()} $it"
+            conversationViewModel.clearVoiceTranscript()
+        }
+    }
+
+    // Leaving the screen abandons an in-progress recording; the ViewModel outlives this
+    // composable, so leaving it running would otherwise hold the mic indefinitely.
+    DisposableEffect(Unit) {
+        onDispose { conversationViewModel.cancelVoiceInput() }
     }
 
     val sendCurrentInput = {
@@ -151,6 +191,25 @@ fun ConversationScreen(
                     enabled = !isGenerating,
                     maxLines = 4
                 )
+                IconButton(
+                    // Tap to start, tap again to stop. Stays tappable while recording so the user
+                    // can always stop — otherwise a send/end started mid-recording would lock the
+                    // mic until it finishes.
+                    onClick = {
+                        if (isRecordingVoice) conversationViewModel.stopVoiceInput() else startVoiceInput()
+                    },
+                    enabled = isRecordingVoice || (!isGenerating && !isTranscribing)
+                ) {
+                    when {
+                        isTranscribing -> CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        isRecordingVoice -> Icon(
+                            Icons.Default.Stop,
+                            contentDescription = "Stop recording",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                        else -> Icon(Icons.Default.Mic, contentDescription = "Voice input")
+                    }
+                }
                 IconButton(
                     // While generating (a send, or an endSession() analysis), this becomes an
                     // inline Stop button: tapping it aborts the in-flight work instead of sending.

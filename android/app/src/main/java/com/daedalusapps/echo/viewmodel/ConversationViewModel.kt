@@ -9,11 +9,14 @@ import com.daedalusapps.echo.ai.EmbeddingService
 import com.daedalusapps.echo.ai.LocalLlmService
 import com.daedalusapps.echo.ai.OFFLINE_GUARDRAIL
 import com.daedalusapps.echo.ai.Role
+import com.daedalusapps.echo.ai.TranscriptionService
 import com.daedalusapps.echo.ai.aiTextBudget
 import com.daedalusapps.echo.ai.analyzeTranscript
+import com.daedalusapps.echo.ai.isWhisperReady
 import com.daedalusapps.echo.data.RecordingRepository
 import com.daedalusapps.echo.data.db.AppDatabase
 import com.daedalusapps.echo.data.model.Recording
+import com.daedalusapps.echo.recording.AudioRecorder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -86,7 +89,9 @@ class ConversationViewModel @JvmOverloads constructor(
     private val embedder: EmbeddingService = EmbeddingService(application),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val clock: () -> Long = { System.currentTimeMillis() },
-    private val contextBudgetChars: Int = (aiTextBudget(application) * CONVERSATION_CONTEXT_FRACTION).toInt()
+    private val contextBudgetChars: Int = (aiTextBudget(application) * CONVERSATION_CONTEXT_FRACTION).toInt(),
+    private val audioRecorderProvider: () -> AudioRecorder = { AudioRecorder(application) },
+    private val transcriptionServiceProvider: () -> TranscriptionService = { TranscriptionService(application) }
 ) : AndroidViewModel(application) {
 
     // Rolling summary of messages already folded out of the live context, and the index into
@@ -104,6 +109,29 @@ class ConversationViewModel @JvmOverloads constructor(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
+    // Push-to-talk voice input (#23 / EC.1): tap-to-start/stop recording, then transcribe off the
+    // main thread. Lazy so construction doesn't touch AudioManager/model files until used.
+    private val audioRecorder by lazy { audioRecorderProvider() }
+    private val transcriptionService by lazy { transcriptionServiceProvider() }
+    private var voiceRecordingFile: File? = null
+
+    private val _isRecordingVoice = MutableStateFlow(false)
+    val isRecordingVoice: StateFlow<Boolean> = _isRecordingVoice
+
+    private val _isTranscribing = MutableStateFlow(false)
+    val isTranscribing: StateFlow<Boolean> = _isTranscribing
+
+    private val _voiceTranscript = MutableStateFlow<String?>(null)
+    val voiceTranscript: StateFlow<String?> = _voiceTranscript
+
+    fun clearVoiceTranscript() { _voiceTranscript.value = null }
+
+    // Auto-listen must never spin on silence once it exists (#30): a blank transcription in
+    // stopVoiceInput() arms this so the next auto-listen trigger can skip itself. Unused until
+    // #30 wires up the auto-listen loop.
+    @Volatile
+    private var suppressNextAutoListen = false
+
     /** File backing the current session; exposed internally so tests can assert on its content. */
     internal lateinit var sessionFile: File
         private set
@@ -120,6 +148,89 @@ class ConversationViewModel @JvmOverloads constructor(
     }
 
     fun clearError() { _error.value = null }
+
+    /** Starts recording a voice turn to a temp file in cacheDir. No-op while busy. */
+    fun startVoiceInput() {
+        if (_isRecordingVoice.value || _isTranscribing.value || _isGenerating.value) return
+        suppressNextAutoListen = false
+        val application = getApplication<Application>()
+        if (!isWhisperReady(application)) {
+            _error.value = "Voice input needs the transcription model — download it in Settings."
+            return
+        }
+        val dir = File(application.cacheDir, "voice_input").also { it.mkdirs() }
+        val file = File(dir, "voice_${clock()}.m4a")
+        try {
+            audioRecorder.start(file, false)
+            voiceRecordingFile = file
+            _isRecordingVoice.value = true
+            _error.value = null
+        } catch (e: Exception) {
+            Log.e("ConversationViewModel", "Failed to start voice recording", e)
+            _error.value = e.message ?: "Failed to start recording"
+            voiceRecordingFile = null
+            _isRecordingVoice.value = false
+        }
+    }
+
+    /**
+     * Starts voice input the way a big mic button on a voice-only surface would (mirrors
+     * notetaker's P9.3): echo has no TTS yet to interrupt, so this simply delegates to
+     * [startVoiceInput] for now — a later issue (#24) extends this once spoken replies exist.
+     */
+    fun startVoiceInputInterruptingSpeech() {
+        startVoiceInput()
+    }
+
+    /**
+     * Stops the in-progress voice recording and transcribes it off the main thread. The result is
+     * exposed through [voiceTranscript] for the UI to place in the input field (instant-send
+     * consumption is a later issue, #26). The temp audio file is always deleted once transcription
+     * finishes, succeeds or not.
+     */
+    fun stopVoiceInput() {
+        if (!_isRecordingVoice.value) return
+        val file = voiceRecordingFile
+        voiceRecordingFile = null
+        audioRecorder.stop()
+        _isRecordingVoice.value = false
+        if (file == null) return
+
+        _isTranscribing.value = true
+        _error.value = null
+        viewModelScope.launch {
+            try {
+                val text = withContext(ioDispatcher) { transcriptionService.transcribe(file) }
+                if (text.isBlank()) {
+                    _error.value = "Didn't catch that"
+                    // Never spin the auto-listen loop on silence: skip the next trigger (#30).
+                    suppressNextAutoListen = true
+                } else {
+                    _voiceTranscript.value = text
+                }
+            } catch (e: Exception) {
+                Log.e("ConversationViewModel", "Voice transcription failed", e)
+                _error.value = e.message ?: "Transcription failed"
+            } finally {
+                _isTranscribing.value = false
+                withContext(ioDispatcher) { file.delete() }
+            }
+        }
+    }
+
+    /**
+     * Abandons an in-progress voice recording without transcribing it, releasing the mic and
+     * dropping the temp file. Called when the conversation screen goes away, so a recording the
+     * user walked away from cannot keep the mic held for the life of the process.
+     */
+    fun cancelVoiceInput() {
+        if (!_isRecordingVoice.value) return
+        val file = voiceRecordingFile
+        voiceRecordingFile = null
+        audioRecorder.stop()
+        _isRecordingVoice.value = false
+        file?.delete()
+    }
 
     /** Rotates to a fresh session file (a new "meeting"); the previous transcript stays on disk. */
     fun startNewSession() {
@@ -437,6 +548,7 @@ class ConversationViewModel @JvmOverloads constructor(
     override fun onCleared() {
         super.onCleared()
         generationJob?.cancel()
+        cancelVoiceInput()
         embedder.close()
     }
 }

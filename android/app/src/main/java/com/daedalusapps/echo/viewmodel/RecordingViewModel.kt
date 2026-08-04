@@ -13,17 +13,12 @@ import androidx.core.content.FileProvider
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.daedalusapps.echo.ai.activePrompt
-import com.daedalusapps.echo.ai.aiTextBudget
+import com.daedalusapps.echo.ai.analyzeTranscript
 import com.daedalusapps.echo.ai.buildLibraryQuestionPrompt
 import com.daedalusapps.echo.ai.buildNoteQuestionPrompt
-import com.daedalusapps.echo.ai.CHUNK_SUMMARY_PROMPT
-import com.daedalusapps.echo.ai.chunkTranscript
 import com.daedalusapps.echo.ai.EmbeddingService
-import com.daedalusapps.echo.ai.extractActionItems
 import com.daedalusapps.echo.ai.LocalLlmService
 import com.daedalusapps.echo.ai.MarkdownExporter
-import com.daedalusapps.echo.ai.SmartAnalysisParser
 import com.daedalusapps.echo.ai.TranscriptionService
 import com.daedalusapps.echo.ai.isWhisperReady
 import com.daedalusapps.echo.data.RecordingRepository
@@ -388,50 +383,10 @@ class RecordingViewModel @JvmOverloads constructor(
             }
             repo.save(note.copy(transcript = transcript))
 
-            // Step 2: Summarize + mind map with Gemma (chunked for long transcripts)
-            llm.ensureLoaded()
-            val chunks = chunkTranscript(transcript, aiTextBudget(getApplication()))
-            val rawResponse = if (chunks.size == 1) {
-                _syncProgress.value = "Analyzing with Gemma…"
-                llm.generate(activePrompt(getApplication()), chunks[0])
-            } else {
-                val chunkSummaries = chunks.mapIndexed { i, chunk ->
-                    _syncProgress.value = "Analyzing part ${i + 1} of ${chunks.size}…"
-                    llm.generate(CHUNK_SUMMARY_PROMPT, chunk)
-                }
-                _syncProgress.value = "Synthesizing results…"
-                llm.generate(activePrompt(getApplication()), chunkSummaries.joinToString("\n\n"))
-            }
-            val cleanJson = stripCodeFences(rawResponse)
-            val analysis = SmartAnalysisParser.parse(cleanJson)
-
-            val fullSummaryFinal = if ("## Action Items" !in analysis.fullSummary) {
-                val items = extractActionItems(transcript)
-                if (items.isNotEmpty()) {
-                    analysis.fullSummary.trimEnd() + "\n\n## Action Items\n" +
-                        items.joinToString("\n") { "- [ ] $it" }
-                } else {
-                    analysis.fullSummary
-                }
-            } else {
-                analysis.fullSummary
-            }
-
-            repo.updateSummary(
-                filename = filename,
-                summary = fullSummaryFinal,
-                mindMap = analysis.mindMap,
-                title = analysis.title,
-                shortSummary = analysis.shortSummary,
-                topics = analysis.topics
-            )
-
-            // Generate semantic embedding for library-wide Q&A (silent if model not ready)
-            if (embedder.isReady) {
-                embedder.ensureLoaded()
-                val embText = "${analysis.shortSummary} ${analysis.topics.joinToString(" ")}"
-                embedder.embed(embText)?.let { repo.updateEmbedding(filename, it) }
-            }
+            // Step 2: Summarize + mind map with Gemma (chunked for long transcripts), plus
+            // embedding generation — extracted to analyzeTranscript so this pipeline is shared.
+            _syncProgress.value = "Analyzing with Gemma…"
+            analyzeTranscript(getApplication(), llm, embedder, repo, filename, transcript)
 
             _currentNote.value = repo.get(filename)
         } catch (e: Exception) {
@@ -441,12 +396,6 @@ class RecordingViewModel @JvmOverloads constructor(
             _isProcessing.value = false
             _syncProgress.value = null
         }
-    }
-
-    private fun stripCodeFences(text: String): String {
-        return text.trim()
-            .removePrefix("```json").removePrefix("```")
-            .removeSuffix("```").trim()
     }
 
     fun clearExportIntent() { _exportIntent.value = null }

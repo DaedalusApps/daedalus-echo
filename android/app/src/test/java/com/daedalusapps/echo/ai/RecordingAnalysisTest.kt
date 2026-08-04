@@ -23,6 +23,8 @@ class RecordingAnalysisTest {
     @Before
     fun setup() {
         val prefs = mockk<SharedPreferences>(relaxed = true)
+        every { prefs.getString("custom_prompt", null) } returns null
+        every { prefs.getInt(AI_TEXT_BUDGET_KEY, AI_TEXT_BUDGET_DEFAULT) } returns AI_TEXT_BUDGET_DEFAULT
         context = mockk(relaxed = true)
         every { context.getSharedPreferences(any(), any()) } returns prefs
 
@@ -49,9 +51,9 @@ class RecordingAnalysisTest {
 
     @Test
     fun multiChunk_callsPerChunkThenSynthesis() = runTest {
-        // Default aiTextBudget resolves to the clamped minimum (2000 chars) against the relaxed
-        // SharedPreferences mock, so a transcript well beyond that forces multiple chunks.
-        val transcript = "word ".repeat(1000)
+        // aiTextBudget resolves to AI_TEXT_BUDGET_DEFAULT (12,000 chars) via the mocked prefs,
+        // so a transcript well beyond that forces multiple chunks.
+        val transcript = "word ".repeat(3000)
         coEvery { llm.generate(any(), any()) } returns jsonResponse
 
         analyzeTranscript(context, llm, embedder, repo, "note.mp3", transcript)

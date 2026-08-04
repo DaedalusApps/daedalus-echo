@@ -1,11 +1,13 @@
 package com.daedalusapps.echo.viewmodel
 
 import android.app.Application
+import android.content.Context
 import android.util.Log
 import androidx.test.core.app.ApplicationProvider
 import com.daedalusapps.echo.ai.ChatTurn
 import com.daedalusapps.echo.ai.LocalLlmService
 import com.daedalusapps.echo.ai.Role
+import com.daedalusapps.echo.ai.SpeechService
 import com.daedalusapps.echo.ai.TranscriptionService
 import com.daedalusapps.echo.ai.WHISPER_DECODER_FILE
 import com.daedalusapps.echo.ai.WHISPER_ENCODER_FILE
@@ -24,6 +26,7 @@ import io.mockk.mockkStatic
 import io.mockk.slot
 import io.mockk.unmockkStatic
 import io.mockk.verify
+import io.mockk.verifyOrder
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -66,10 +69,17 @@ class ConversationViewModelTest {
     private val repo = mockk<RecordingRepository>(relaxed = true)
     private val audioRecorder = mockk<AudioRecorder>(relaxed = true)
     private val transcriptionService = mockk<TranscriptionService>(relaxed = true)
+    private val tts = mockk<SpeechService>(relaxed = true)
+    // Counts how often the ViewModel asked for a speech engine, so tests can assert that a user
+    // who never turns spoken replies on never pays for building one.
+    private var ttsConstructions = 0
     private val testDispatcher = StandardTestDispatcher()
 
     // Fixed instant so filenames/day comparisons are deterministic across the test run.
     private val nowMillis = 1_700_000_000_000L
+
+    private fun prefs() =
+        application.getSharedPreferences("daedalus_prefs", Context.MODE_PRIVATE)
 
     private fun conversationsDir(): File = File(application.filesDir, "conversations")
 
@@ -93,8 +103,11 @@ class ConversationViewModelTest {
         every { Log.e(any(), any()) } returns 0
         every { Log.e(any(), any(), any()) } returns 0
         coEvery { llm.ensureLoaded() } returns Unit
+        every { tts.isAvailable } returns true
+        ttsConstructions = 0
 
         conversationsDir().deleteRecursively()
+        prefs().edit().clear().commit()
     }
 
     @After
@@ -102,6 +115,7 @@ class ConversationViewModelTest {
         Dispatchers.resetMain()
         unmockkStatic(Log::class)
         conversationsDir().deleteRecursively()
+        prefs().edit().clear().commit()
     }
 
     private fun newViewModel(contextBudgetChars: Int? = null): ConversationViewModel = ConversationViewModel(
@@ -112,7 +126,8 @@ class ConversationViewModelTest {
         clock = { nowMillis },
         contextBudgetChars = contextBudgetChars ?: (aiTextBudget(application) * 0.75).toInt(),
         audioRecorderProvider = { audioRecorder },
-        transcriptionServiceProvider = { transcriptionService }
+        transcriptionServiceProvider = { transcriptionService },
+        ttsProvider = { ttsConstructions++; tts }
     )
 
     // (a) send() twice produces user+model messages in order, and the session file contains
@@ -1145,8 +1160,7 @@ class ConversationViewModelTest {
         assertNull(vm.voiceTranscript.value)
     }
 
-    // (EC.1-i) startVoiceInputInterruptingSpeech() delegates to startVoiceInput() (echo has no TTS
-    //     yet to interrupt; #24 will extend this).
+    // (EC.1-i) startVoiceInputInterruptingSpeech() delegates to startVoiceInput().
     @Test
     fun startVoiceInputInterruptingSpeech_delegatesToStartVoiceInput() = runTest {
         markWhisperReady()
@@ -1156,5 +1170,219 @@ class ConversationViewModelTest {
 
         assertTrue(vm.isRecordingVoice.value)
         verify(exactly = 1) { audioRecorder.start(any(), any()) }
+    }
+
+    // (#24) A MODEL reply speaks through the TTS wrapper when the toggle is enabled and TTS is
+    //     available.
+    @Test
+    fun send_ttsEnabled_speaksModelReply() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Here's a reply"
+        val vm = newViewModel()
+        vm.setTtsEnabled(true)
+
+        vm.send("Hello")
+        advanceUntilIdle()
+
+        verify(exactly = 1) { tts.speak("Here's a reply") }
+    }
+
+    // (#24) No speak() call when the toggle is disabled (the default).
+    @Test
+    fun send_ttsDisabled_doesNotSpeak() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Here's a reply"
+        val vm = newViewModel()
+
+        vm.send("Hello")
+        advanceUntilIdle()
+
+        verify(exactly = 0) { tts.speak(any()) }
+    }
+
+    // (#24) Even with the toggle enabled, an unavailable TTS engine never speaks — this must
+    //     behave exactly like disabled, with no error surfaced.
+    @Test
+    fun send_ttsEnabledButUnavailable_doesNotSpeak() = runTest {
+        every { tts.isAvailable } returns false
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Here's a reply"
+        val vm = newViewModel()
+        vm.setTtsEnabled(true)
+
+        vm.send("Hello")
+        advanceUntilIdle()
+
+        verify(exactly = 0) { tts.speak(any()) }
+        assertNull(vm.error.value)
+    }
+
+    // (#24) The voice-only big-mic path must stop any in-progress TTS playback BEFORE starting
+    //     the recorder — never the reverse, or the recording would start while the reply is still
+    //     audibly being spoken over it.
+    @Test
+    fun startVoiceInputInterruptingSpeech_stopsSpeechBeforeStartingRecording() = runTest {
+        markWhisperReady()
+        val vm = newViewModel()
+        vm.setTtsEnabled(true)
+
+        vm.startVoiceInputInterruptingSpeech()
+
+        verifyOrder {
+            tts.stop()
+            audioRecorder.start(any(), any())
+        }
+        assertTrue(vm.isRecordingVoice.value)
+    }
+
+    // (#24) onCleared() shuts down the TTS engine it built.
+    @Test
+    fun onCleared_shutsDownTts() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "reply"
+        val vm = newViewModel()
+        vm.setTtsEnabled(true)
+        vm.send("Hello") // builds the engine
+        advanceUntilIdle()
+
+        val method = ConversationViewModel::class.java.getDeclaredMethod("onCleared")
+        method.isAccessible = true
+        method.invoke(vm)
+
+        verify(exactly = 1) { tts.shutdown() }
+    }
+
+    // (#24) A user who never turns spoken replies on must never pay to build the speech engine:
+    //     on a real device that binds the system TextToSpeech service.
+    @Test
+    fun ttsNeverEnabled_neverBuildsSpeechEngine() = runTest {
+        markWhisperReady()
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "reply"
+        val vm = newViewModel()
+
+        vm.send("Hello")
+        advanceUntilIdle()
+        vm.startVoiceInput()
+        vm.startNewSession()
+        advanceUntilIdle()
+        vm.stopSpeaking()
+
+        assertEquals(0, ttsConstructions)
+    }
+
+    // (#24) Muting mid-reply silences what is already being spoken.
+    @Test
+    fun setTtsEnabledFalse_stopsSpeechInProgress() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "reply"
+        val vm = newViewModel()
+        vm.setTtsEnabled(true)
+        vm.send("Hello")
+        advanceUntilIdle()
+
+        vm.setTtsEnabled(false)
+
+        verify(exactly = 1) { tts.stop() } // muting stops the reply just spoken
+    }
+
+    // (#24) The toggle persists to SharedPreferences and is restored by a fresh ViewModel.
+    @Test
+    fun setTtsEnabled_persistsAndRestoredByNewViewModel() = runTest {
+        val vm = newViewModel()
+        assertFalse(vm.ttsEnabled.value)
+
+        vm.setTtsEnabled(true)
+        assertTrue(vm.ttsEnabled.value)
+        assertTrue(prefs().getBoolean("conversation_tts_enabled", false))
+
+        val reloaded = newViewModel()
+        assertTrue(reloaded.ttsEnabled.value)
+    }
+
+    // (#24) isSpeaking reflects the SpeechService wrapper's speaking-changed callback, which the
+    //     ViewModel registers when the engine is built.
+    @Test
+    fun isSpeaking_reflectsWrapperCallbacks() = runTest {
+        val listenerSlot = slot<(Boolean) -> Unit>()
+        every { tts.setOnSpeakingChangedListener(capture(listenerSlot)) } returns Unit
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "reply"
+        val vm = newViewModel()
+        vm.setTtsEnabled(true)
+        vm.send("Hello")
+        advanceUntilIdle()
+
+        assertFalse(vm.isSpeaking.value)
+        listenerSlot.captured(true)
+        assertTrue(vm.isSpeaking.value)
+        listenerSlot.captured(false)
+        assertFalse(vm.isSpeaking.value)
+    }
+
+    // (#24) ttsReady starts null ("still starting") and flips true when the wrapper reports the
+    //     engine ready, mirroring how isSpeaking reflects the speaking-changed callback.
+    @Test
+    fun ttsReady_reflectsWrapperReadyCallback() = runTest {
+        val listenerSlot = slot<(Boolean) -> Unit>()
+        every { tts.setOnReadyChangedListener(capture(listenerSlot)) } returns Unit
+        val vm = newViewModel()
+        vm.setTtsEnabled(true)
+
+        // Engine is built lazily; trigger it the same way availableVoices() does.
+        vm.availableVoices()
+
+        assertNull(vm.ttsReady.value)
+        listenerSlot.captured(true)
+        assertEquals(true, vm.ttsReady.value)
+    }
+
+    // (#24) A failed init must be distinguishable from an init still running: the wrapper reports
+    //     false, and that must NOT read as the "still starting" state.
+    @Test
+    fun ttsReady_initFailure_isDistinctFromStillStarting() = runTest {
+        val listenerSlot = slot<(Boolean) -> Unit>()
+        every { tts.setOnReadyChangedListener(capture(listenerSlot)) } returns Unit
+        val vm = newViewModel()
+        vm.setTtsEnabled(true)
+        vm.availableVoices()
+
+        listenerSlot.captured(false)
+
+        assertEquals(false, vm.ttsReady.value)
+        assertNotNull(vm.ttsReady.value)
+    }
+
+    // (#24) The ready listener must be registered at the same point the engine is lazily built
+    //     (mirroring setOnSpeakingChangedListener), so ttsReady tracks a freshly built engine.
+    @Test
+    fun ttsReady_listenerRegisteredWhenEngineBuilt() = runTest {
+        val vm = newViewModel()
+        vm.setTtsEnabled(true)
+
+        vm.availableVoices() // first touch that builds the engine
+
+        verify(exactly = 1) { tts.setOnReadyChangedListener(any()) }
+        assertEquals(1, ttsConstructions)
+    }
+
+    // (#24) Observing ttsReady with spoken replies off must not build the engine — mirrors
+    //     ttsNeverEnabled_neverBuildsSpeechEngine.
+    @Test
+    fun ttsReady_ttsDisabled_neverBuildsEngine() = runTest {
+        val vm = newViewModel()
+
+        assertNull(vm.ttsReady.value)
+
+        assertEquals(0, ttsConstructions)
+    }
+
+    // (#24) Tapping the speaker while speaking must stop the speech without flipping the
+    //     ttsEnabled preference — distinct from the toggle behavior when not speaking.
+    @Test
+    fun stopSpeaking_whileSpeaking_stopsWithoutChangingTtsEnabledPref() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "reply"
+        val vm = newViewModel()
+        vm.setTtsEnabled(true)
+        vm.send("Hello")
+        advanceUntilIdle()
+
+        vm.stopSpeaking()
+
+        verify(atLeast = 1) { tts.stop() }
+        assertTrue("ttsEnabled pref must be unchanged", vm.ttsEnabled.value)
     }
 }

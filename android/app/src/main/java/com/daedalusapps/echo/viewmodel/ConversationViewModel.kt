@@ -312,6 +312,7 @@ class ConversationViewModel @JvmOverloads constructor(
     /** Rotates to a fresh session file (a new "meeting"); the previous transcript stays on disk. */
     fun startNewSession() {
         if (_isGenerating.value) return
+        stopSpeaking()
         viewModelScope.launch {
             loadJob.join()
             sessionFile = withContext(ioDispatcher) { newSessionFile(conversationsDir(getApplication())) }
@@ -327,6 +328,7 @@ class ConversationViewModel @JvmOverloads constructor(
     fun send(text: String) {
         val trimmed = text.trim()
         if (trimmed.isEmpty() || _isGenerating.value) return
+        stopSpeaking()
         // Claimed synchronously on the caller (main) thread so a rapid double-send cannot slip
         // through before the coroutine body runs.
         _isGenerating.value = true
@@ -361,6 +363,7 @@ class ConversationViewModel @JvmOverloads constructor(
      */
     fun endSession() {
         if (_isGenerating.value) return
+        stopSpeaking()
         // Claimed synchronously on the caller (main) thread so a double-tap — or a send() landing
         // in the same frame — cannot slip past the guard before the coroutine body runs.
         _isGenerating.value = true

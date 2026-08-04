@@ -1232,6 +1232,51 @@ class ConversationViewModelTest {
         assertTrue(vm.isRecordingVoice.value)
     }
 
+    // (#24) send() interrupts any reply still being spoken before starting a new turn — otherwise
+    //     the agent would talk over the exchange it's about to start.
+    @Test
+    fun send_stopsInProgressSpeechBeforeGenerating() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "reply"
+        val vm = newViewModel()
+        vm.setTtsEnabled(true)
+        vm.send("First")
+        advanceUntilIdle()
+
+        vm.send("Second")
+
+        verify(atLeast = 1) { tts.stop() }
+    }
+
+    // (#24) endSession() interrupts any reply still being spoken — otherwise speech from the
+    //     ending exchange would continue over the session rotation.
+    @Test
+    fun endSession_stopsInProgressSpeech() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "reply"
+        val vm = newViewModel()
+        vm.setTtsEnabled(true)
+        vm.send("Hello")
+        advanceUntilIdle()
+
+        vm.endSession()
+
+        verify(atLeast = 1) { tts.stop() }
+    }
+
+    // (#24) startNewSession() interrupts any reply still being spoken — otherwise speech from the
+    //     old session would continue after rotating to a fresh one.
+    @Test
+    fun startNewSession_stopsInProgressSpeech() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "reply"
+        val vm = newViewModel()
+        vm.setTtsEnabled(true)
+        vm.send("Hello")
+        advanceUntilIdle()
+
+        vm.startNewSession()
+
+        verify(atLeast = 1) { tts.stop() }
+    }
+
     // (#24) onCleared() shuts down the TTS engine it built.
     @Test
     fun onCleared_shutsDownTts() = runTest {
@@ -1277,7 +1322,9 @@ class ConversationViewModelTest {
 
         vm.setTtsEnabled(false)
 
-        verify(exactly = 1) { tts.stop() } // muting stops the reply just spoken
+        // Two stop() calls: send() itself interrupts any prior speech before generating, then
+        // setTtsEnabled(false) stops the reply just spoken.
+        verify(exactly = 2) { tts.stop() }
     }
 
     // (#24) The toggle persists to SharedPreferences and is restored by a fresh ViewModel.

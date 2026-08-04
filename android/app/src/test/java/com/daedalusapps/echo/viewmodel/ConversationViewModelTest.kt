@@ -8,10 +8,14 @@ import com.daedalusapps.echo.ai.LocalLlmService
 import com.daedalusapps.echo.ai.Role
 import com.daedalusapps.echo.ai.aiTextBudget
 import com.daedalusapps.echo.ai.buildGemmaPrompt
+import com.daedalusapps.echo.data.RecordingRepository
+import com.daedalusapps.echo.data.model.Recording
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
+import io.mockk.slot
 import io.mockk.unmockkStatic
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -40,10 +44,11 @@ import java.util.Locale
 
 /**
  * Ported (text-only) subset of notetaker's ConversationViewModelTest covering session file
- * format/append/resume/parsing, consecutive-role merging, the single-shot send guard, and
- * TimeoutCancellationException-vs-CancellationException ordering (#20 / EB.3). Voice, TTS,
- * instant send, auto-listen, endSession, and the rolling-summary live context are out of scope
- * here (later issues) — see HANDOFF_NOTETAKER_PARITY.md / issue #20 for the scope split.
+ * format/append/resume/parsing, consecutive-role merging, the single-shot send guard,
+ * TimeoutCancellationException-vs-CancellationException ordering, the rolling-summary live
+ * context cap (#20 / EB.3, #21 / EB.4), and ending a session into an analyzed library note
+ * (#22 / EB.5). Voice, TTS, instant send, and auto-listen are out of scope here (later issues) —
+ * see HANDOFF_NOTETAKER_PARITY.md for the scope split.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -51,6 +56,7 @@ class ConversationViewModelTest {
 
     private lateinit var application: Application
     private val llm = mockk<LocalLlmService>(relaxed = true)
+    private val repo = mockk<RecordingRepository>(relaxed = true)
     private val testDispatcher = StandardTestDispatcher()
 
     // Fixed instant so filenames/day comparisons are deterministic across the test run.
@@ -83,6 +89,7 @@ class ConversationViewModelTest {
     private fun newViewModel(contextBudgetChars: Int? = null): ConversationViewModel = ConversationViewModel(
         application = application,
         llm = llm,
+        repo = repo,
         ioDispatcher = testDispatcher,
         clock = { nowMillis },
         contextBudgetChars = contextBudgetChars ?: (aiTextBudget(application) * 0.75).toInt()
@@ -362,12 +369,278 @@ class ConversationViewModelTest {
         assertTrue(vm.sessionFile.readText().contains("Back to normal"))
     }
 
-    // Note: newSessionFile()'s collision-avoiding retry loop (ported verbatim from notetaker) is
-    // only reachable in this slice's construction path when NO today-dated file exists yet — any
-    // existing conv_<today>*.md is instead picked up by findTodaysSessionFile() and *resumed*, not
-    // rotated past. The loop's actual collision branch only fires via startNewSession(), which is
-    // out of scope here (no UI control for it yet) — see #20 scope notes. Not separately unit
-    // tested for that reason; it will get direct coverage when startNewSession() is ported.
+    // (EB.5-a) The user can start a fresh session on the same day: rotating clears the transcript
+    //     and writes to a new file, leaving the previous one intact on disk. Also exercises
+    //     newSessionFile()'s collision-avoiding retry loop, which only fires via startNewSession()
+    //     (findTodaysSessionFile() resumes rather than rotates past an existing today-dated file).
+    @Test
+    fun startNewSession_rotatesToNewFileAndClearsMessages() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.send("Morning meeting")
+        advanceUntilIdle()
+        val firstFile = vm.sessionFile
+
+        vm.startNewSession()
+        advanceUntilIdle()
+
+        assertTrue(vm.messages.value.isEmpty())
+        assertTrue(firstFile.absolutePath != vm.sessionFile.absolutePath)
+
+        vm.send("Afternoon meeting")
+        advanceUntilIdle()
+
+        assertTrue(firstFile.readText().contains("Morning meeting"))
+        assertFalse(firstFile.readText().contains("Afternoon meeting"))
+        assertTrue(vm.sessionFile.readText().contains("Afternoon meeting"))
+        assertFalse(vm.sessionFile.readText().contains("Morning meeting"))
+
+        // The rotated-to session is the one resumed on reload (most recent file wins).
+        val reloaded = newViewModel()
+        advanceUntilIdle()
+        assertEquals(vm.sessionFile.absolutePath, reloaded.sessionFile.absolutePath)
+        assertEquals(1, reloaded.messages.value.count { it.role == Role.USER })
+    }
+
+    // (EB.5-b) endSession() inserts exactly one Recording whose transcript contains every turn,
+    //     in order, with speaker labels, mirroring local-recording save conventions.
+    @Test
+    fun endSession_insertsOneRecordingWithSpeakerLabeledTranscriptInOrder() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returnsMany listOf(
+            "Sounds interesting, tell me more.",
+            "Great, here's a follow-up idea."
+        )
+        val vm = newViewModel()
+        vm.send("I want to build a note app")
+        advanceUntilIdle()
+        vm.send("It should support voice")
+        advanceUntilIdle()
+
+        val saved = slot<Recording>()
+        coEvery { repo.save(capture(saved)) } returns Unit
+
+        vm.endSession()
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { repo.save(any()) }
+        val recording = saved.captured
+        assertEquals(vm.sessionFile.name, recording.filename)
+        val transcript = recording.transcript
+        val order = listOf("Me: I want to build a note app", "Agent: Sounds interesting, tell me more.",
+            "Me: It should support voice", "Agent: Great, here's a follow-up idea.")
+        var lastIndex = -1
+        order.forEach { marker ->
+            val idx = transcript.indexOf(marker, lastIndex + 1)
+            assertTrue("expected \"$marker\" after index $lastIndex in:\n$transcript", idx > lastIndex)
+            lastIndex = idx
+        }
+    }
+
+    // (EB.5-c) endSession() triggers the same post-save analysis pipeline a transcribed local
+    //     recording gets: the LLM is invoked (mocked seam) and the resulting analysis is saved.
+    @Test
+    fun endSession_triggersAnalysisPipeline() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.send("Let's plan the launch")
+        advanceUntilIdle()
+
+        coEvery { llm.generate(any(), any<String>()) } returns
+            """{"title":"Launch plan","shortSummary":"short","fullSummary":"full","mindMap":"","topics":["launch"]}"""
+
+        vm.endSession()
+        advanceUntilIdle()
+
+        coVerify(atLeast = 1) { llm.generate(any(), any<String>()) }
+        coVerify(exactly = 1) { repo.updateSummary(any(), any(), any(), any(), any(), any()) }
+    }
+
+    // (EB.5-d) The session file is renamed to its ended form, stays on disk, and its content is
+    //     unaffected (verbatim transcript guarantee).
+    @Test
+    fun endSession_rendersSessionFileEndedAndKeepsContent() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.send("Original content to preserve")
+        advanceUntilIdle()
+        val originalFile = vm.sessionFile
+        val originalContent = originalFile.readText()
+
+        vm.endSession()
+        advanceUntilIdle()
+
+        assertFalse("original session file should be renamed away", originalFile.exists())
+        val dir = conversationsDir()
+        val endedFiles = dir.listFiles()?.filter { it.name.contains("ended") } ?: emptyList()
+        assertEquals(1, endedFiles.size)
+        assertEquals(originalContent, endedFiles[0].readText())
+    }
+
+    // (EB.5-e) After endSession, a new ViewModel does NOT resume the ended session — it starts a
+    //     fresh one.
+    @Test
+    fun endSession_endedSessionIsNeverResumedByNewViewModel() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.send("This session should end")
+        advanceUntilIdle()
+
+        vm.endSession()
+        advanceUntilIdle()
+
+        val reloaded = newViewModel()
+        advanceUntilIdle()
+
+        assertTrue(reloaded.messages.value.isEmpty())
+        assertFalse(reloaded.sessionFile.name.contains("ended"))
+    }
+
+    // (EB.5-f) An empty session (no messages) makes endSession() a no-op: no Recording inserted,
+    //     no file changes.
+    @Test
+    fun endSession_emptySession_isNoOp() = runTest {
+        val vm = newViewModel()
+        advanceUntilIdle()
+        val fileBefore = vm.sessionFile
+        val existedBefore = fileBefore.exists()
+
+        vm.endSession()
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { repo.save(any()) }
+        assertEquals(existedBefore, fileBefore.exists())
+        assertEquals(fileBefore.absolutePath, vm.sessionFile.absolutePath)
+        assertTrue(vm.messages.value.isEmpty())
+    }
+
+    // (EB.5-g) Double-tapping End must not save or end the session twice.
+    @Test
+    fun endSession_calledTwiceBeforeCompleting_savesOnlyOnce() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.send("Only one recording please")
+        advanceUntilIdle()
+
+        vm.endSession()
+        vm.endSession()
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { repo.save(any()) }
+        val endedFiles = conversationsDir().listFiles()?.filter { it.name.contains("ended") } ?: emptyList()
+        assertEquals(1, endedFiles.size)
+    }
+
+    // (EB.5-h) A failure during analysis leaves the session live and resumable (not marked ended),
+    //     so the user can retry End rather than losing the meeting.
+    @Test
+    fun endSession_analysisFailure_leavesSessionResumable() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.send("Keep this session alive")
+        advanceUntilIdle()
+        val originalFile = vm.sessionFile
+
+        coEvery { llm.generate(any(), any<String>()) } throws RuntimeException("model exploded")
+
+        vm.endSession()
+        advanceUntilIdle()
+
+        assertNotNull(vm.error.value)
+        assertTrue("session file should still be live", originalFile.exists())
+        assertEquals(originalFile.absolutePath, vm.sessionFile.absolutePath)
+        assertTrue(vm.messages.value.isNotEmpty())
+        val endedFiles = conversationsDir().listFiles()?.filter { it.name.contains("ended") } ?: emptyList()
+        assertTrue(endedFiles.isEmpty())
+    }
+
+    // (EB.5-i) stopGenerating() must cancel an in-flight endSession() analysis too, not just
+    //     send()'s generation: a cancellation here mirrors the existing analysis-failure fail-safe
+    //     — the session stays live and resumable — no rename, no message clear — but unlike a
+    //     failure, no error is surfaced (cancellation isn't a failure). This is the regression
+    //     endSession()'s NonCancellable rotation tail guards against (a Stop landing mid-rotation
+    //     must not strand the session half-ended: renamed on disk but still live in memory).
+    @Test
+    fun stopGenerating_duringEndSessionAnalysis_cancelsAnalysisLeavesSessionResumable() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.send("Keep this session alive")
+        advanceUntilIdle()
+        val originalFile = vm.sessionFile
+
+        val analysisGate = CompletableDeferred<String>()
+        coEvery { llm.generate(any(), any<String>()) } coAnswers { analysisGate.await() }
+
+        vm.endSession()
+        testDispatcher.scheduler.runCurrent()
+        assertTrue(vm.isGenerating.value)
+
+        vm.stopGenerating()
+        advanceUntilIdle()
+
+        assertFalse("isGenerating must clear on cancellation", vm.isGenerating.value)
+        assertNull("cancellation must not surface as an error", vm.error.value)
+        assertTrue("session file should still be live, not renamed", originalFile.exists())
+        assertEquals(originalFile.absolutePath, vm.sessionFile.absolutePath)
+        assertTrue(vm.messages.value.isNotEmpty())
+        val endedFiles = conversationsDir().listFiles()?.filter { it.name.contains("ended") } ?: emptyList()
+        assertTrue("session must not be marked ended by a cancelled analysis", endedFiles.isEmpty())
+
+        analysisGate.complete("{}")
+    }
+
+    // (EB.5-j) After a cancelled endSession(), retrying End completes normally: saves + rotates,
+    //     exactly like an uninterrupted End would.
+    @Test
+    fun endSession_retryAfterCancellation_completesNormally() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.send("Keep this session alive")
+        advanceUntilIdle()
+
+        val analysisGate = CompletableDeferred<String>()
+        coEvery { llm.generate(any(), any<String>()) } coAnswers { analysisGate.await() }
+        vm.endSession()
+        testDispatcher.scheduler.runCurrent()
+        vm.stopGenerating()
+        advanceUntilIdle()
+
+        coEvery { llm.generate(any(), any<String>()) } returns
+            """{"title":"t","shortSummary":"s","fullSummary":"f","mindMap":"","topics":[]}"""
+        vm.endSession()
+        advanceUntilIdle()
+
+        assertNull(vm.error.value)
+        assertFalse(vm.isGenerating.value)
+        assertTrue(vm.messages.value.isEmpty())
+        val endedFiles = conversationsDir().listFiles()?.filter { it.name.contains("ended") } ?: emptyList()
+        assertEquals(1, endedFiles.size)
+    }
+
+    // (EB.5-k) generate()'s 3-minute timeout during endSession's analysis arrives as a
+    //     CancellationException subtype, so it must NOT be mistaken for a stopGenerating()
+    //     cancellation: it is a real failure and has to reach the user as an error.
+    @Test
+    fun endSession_analysisTimesOut_setsErrorLeavesSessionResumable() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.send("Keep this session alive")
+        advanceUntilIdle()
+        val originalFile = vm.sessionFile
+
+        coEvery { llm.generate(any(), any<String>()) } coAnswers {
+            withTimeout(1) { delay(10_000) }
+            "unreachable"
+        }
+
+        vm.endSession()
+        advanceUntilIdle()
+
+        assertNotNull("a timeout must surface as an error", vm.error.value)
+        assertFalse(vm.isGenerating.value)
+        assertTrue("session file should still be live", originalFile.exists())
+        val endedFiles = conversationsDir().listFiles()?.filter { it.name.contains("ended") } ?: emptyList()
+        assertTrue(endedFiles.isEmpty())
+    }
 
     // (P8.4-a) stopGenerating() during an in-flight generate: no model message appended, no
     //     error surfaced (cancellation is not a failure), isGenerating clears, and the user's

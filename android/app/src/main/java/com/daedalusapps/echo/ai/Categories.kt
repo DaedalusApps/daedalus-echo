@@ -1,6 +1,11 @@
 package com.daedalusapps.echo.ai
 
 import android.content.Context
+import com.daedalusapps.echo.data.model.Recording
+
+const val OFFLINE_GUARDRAIL = "Note: you are an offline assistant. You have no internet access " +
+    "and cannot search the web or fetch current information. Your built-in knowledge may be " +
+    "outdated. Base your answers on the provided notes and conversation."
 
 // Transcripts longer than this are split into chunks before LLM analysis.
 // Budget: 4096 total tokens − ~135 prompt − ~800 output = ~3160 tokens ≈ 12,600 chars.
@@ -8,7 +13,7 @@ private const val SINGLE_PASS_CHAR_LIMIT = 12_000
 private const val CHUNK_CHAR_SIZE = 10_000
 private const val CHUNK_OVERLAP_CHARS = 500
 
-const val CHUNK_SUMMARY_PROMPT = """Summarize this section of a meeting transcript as concise bullet points.
+const val CHUNK_SUMMARY_PROMPT = OFFLINE_GUARDRAIL + "\n\n" + """Summarize this section of a meeting transcript as concise bullet points.
 
 Return ONLY bullet points: main points starting with "- ", sub-points with "  - ". Include any action items. No JSON, no headers, no preamble.
 
@@ -32,7 +37,7 @@ fun chunkTranscript(transcript: String): List<String> {
     return chunks
 }
 
-const val DEFAULT_PROMPT = """Read the voice recording transcript below and extract its contents.
+const val DEFAULT_PROMPT = OFFLINE_GUARDRAIL + "\n\n" + """Read the voice recording transcript below and extract its contents.
 
 Return ONLY a JSON object with exactly these 5 keys. No markdown, no code fences.
 
@@ -44,9 +49,32 @@ Return ONLY a JSON object with exactly these 5 keys. No markdown, no code fences
 
 Transcript:"""
 
-fun activePrompt(context: Context): String =
-    context.getSharedPreferences("daedalus_prefs", Context.MODE_PRIVATE)
-        .getString("custom_prompt", null) ?: DEFAULT_PROMPT
+fun activePrompt(context: Context): String {
+    val custom = context.getSharedPreferences("daedalus_prefs", Context.MODE_PRIVATE)
+        .getString("custom_prompt", null) ?: return DEFAULT_PROMPT
+    // A saved custom prompt is usually an edit of DEFAULT_PROMPT, so it already carries the
+    // guardrail — appending unconditionally would repeat it.
+    return if (custom.contains(OFFLINE_GUARDRAIL)) custom else "$custom\n\n$OFFLINE_GUARDRAIL"
+}
+
+fun buildNoteQuestionPrompt(title: String, summary: String): String =
+    "You are answering a question about a specific note. " +
+        "Note title: $title. " +
+        "Note summary: $summary. " +
+        "Answer concisely based only on the note content. " +
+        "If the answer is not in the note, say so clearly.\n\n$OFFLINE_GUARDRAIL"
+
+fun buildLibraryQuestionPrompt(sources: List<Recording>): String = buildString {
+    append("Answer the question using the notes below. ")
+    append("Cite note titles when relevant. ")
+    append("If the answer is not in the notes, say so.\n\n")
+    sources.forEachIndexed { i, r ->
+        append("Note ${i + 1}: ${r.title.ifBlank { r.filename }}\n")
+        append(r.shortSummary.ifBlank { r.summary.take(200) })
+        append("\n\n")
+    }
+    append(OFFLINE_GUARDRAIL)
+}
 
 private val ACTION_PHRASES = listOf(
     "to do", "todo", "need to", "should ", "want to", "going to",

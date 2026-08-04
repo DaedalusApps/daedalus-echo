@@ -14,6 +14,8 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.daedalusapps.echo.ai.activePrompt
+import com.daedalusapps.echo.ai.buildLibraryQuestionPrompt
+import com.daedalusapps.echo.ai.buildNoteQuestionPrompt
 import com.daedalusapps.echo.ai.CHUNK_SUMMARY_PROMPT
 import com.daedalusapps.echo.ai.chunkTranscript
 import com.daedalusapps.echo.ai.EmbeddingService
@@ -508,11 +510,10 @@ class RecordingViewModel @JvmOverloads constructor(
                     return@launch
                 }
                 llm.ensureLoaded()
-                val context = "You are answering a question about a specific note. " +
-                    "Note title: ${note.title}. " +
-                    "Note summary: ${note.shortSummary.ifBlank { note.summary.take(400) }}. " +
-                    "Answer concisely based only on the note content. " +
-                    "If the answer is not in the note, say so clearly."
+                val context = buildNoteQuestionPrompt(
+                    note.title,
+                    note.shortSummary.ifBlank { note.summary.take(400) }
+                )
                 _askAnswer.value = llm.generate(context, question)
             } catch (e: Exception) {
                 Log.e("DaedalusAI", "askNoteQuestion failed", e)
@@ -564,16 +565,7 @@ class RecordingViewModel @JvmOverloads constructor(
                     return@launch
                 }
                 _librarySources.value = sources
-                val context = buildString {
-                    append("Answer the question using the notes below. ")
-                    append("Cite note titles when relevant. ")
-                    append("If the answer is not in the notes, say so.\n\n")
-                    sources.forEachIndexed { i, r ->
-                        append("Note ${i + 1}: ${r.title.ifBlank { r.filename }}\n")
-                        append(r.shortSummary.ifBlank { r.summary.take(200) })
-                        append("\n\n")
-                    }
-                }
+                val context = buildLibraryQuestionPrompt(sources)
                 llm.ensureLoaded()
                 _libraryAnswer.value = llm.generate(context, question)
             } catch (e: Exception) {

@@ -1,6 +1,6 @@
 package com.daedalusapps.echo.ai
 
-const val TODO_EXTRACTION_PROMPT = """From the notes below, extract action items: things the SPEAKER commits to do or says they must do in the future.
+const val TODO_EXTRACTION_PROMPT = OFFLINE_GUARDRAIL + "\n\n" + """From the notes below, extract action items: things the SPEAKER commits to do or says they must do in the future.
 
 NOT action items: narration of what the speaker is currently doing, comments about the recording or app itself, past events, opinions.
 

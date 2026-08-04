@@ -20,6 +20,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
+import com.daedalusapps.echo.ai.AI_TEXT_BUDGET_DEFAULT
+import com.daedalusapps.echo.ai.AI_TEXT_BUDGET_KEY
 import com.daedalusapps.echo.ai.DownloadState
 import com.daedalusapps.echo.ai.EMBEDDING_MODEL_FILE
 import com.daedalusapps.echo.ai.EMBEDDING_MODEL_SIZE_BYTES
@@ -66,6 +68,16 @@ private val MAX_RECORDING_DURATION_OPTIONS = listOf(
 private fun maxRecordingDurationLabel(minutes: Int): String =
     MAX_RECORDING_DURATION_OPTIONS.firstOrNull { it.first == minutes }?.second ?: "$minutes minutes"
 
+private val AI_TEXT_BUDGET_OPTIONS = listOf(
+    6_000 to "6,000 characters",
+    9_000 to "9,000 characters",
+    12_000 to "12,000 characters",
+    16_000 to "16,000 characters"
+)
+
+private fun aiTextBudgetLabel(chars: Int): String =
+    AI_TEXT_BUDGET_OPTIONS.firstOrNull { it.first == chars }?.second ?: "$chars characters"
+
 private fun formatLastBackupTime(millis: Long): String {
     if (millis <= 0L) return "never"
     return java.text.SimpleDateFormat("MMM d, yyyy h:mm a", java.util.Locale.getDefault()).format(java.util.Date(millis))
@@ -95,6 +107,8 @@ fun SettingsScreen(
     var todoLookbackMenuExpanded by remember { mutableStateOf(false) }
     var maxRecordingMinutes by remember { mutableStateOf(prefs.getInt(MAX_RECORDING_MINUTES_KEY, MAX_RECORDING_MINUTES_DEFAULT)) }
     var maxRecordingMenuExpanded by remember { mutableStateOf(false) }
+    var aiTextBudgetChars by remember { mutableStateOf(prefs.getInt(AI_TEXT_BUDGET_KEY, AI_TEXT_BUDGET_DEFAULT)) }
+    var aiTextBudgetMenuExpanded by remember { mutableStateOf(false) }
     var isBackingUp by remember { mutableStateOf(false) }
     val backupFolderName = remember(backupFolderUri) {
         backupFolderUri?.let { uriStr ->
@@ -305,6 +319,37 @@ fun SettingsScreen(
                     Text("The prompt sent to Gemma for every analysis. You can view and customize it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedButton(onClick = onNavigateToPromptEditor, modifier = Modifier.fillMaxWidth()) {
                         Text("Configure Prompt")
+                    }
+                }
+
+                ExposedDropdownMenuBox(
+                    expanded = aiTextBudgetMenuExpanded,
+                    onExpandedChange = { aiTextBudgetMenuExpanded = it }
+                ) {
+                    OutlinedTextField(
+                        readOnly = true,
+                        value = aiTextBudgetLabel(aiTextBudgetChars),
+                        onValueChange = {},
+                        label = { Text("AI processing text budget") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = aiTextBudgetMenuExpanded) },
+                        modifier = Modifier
+                            .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                            .fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = aiTextBudgetMenuExpanded,
+                        onDismissRequest = { aiTextBudgetMenuExpanded = false }
+                    ) {
+                        AI_TEXT_BUDGET_OPTIONS.forEach { (chars, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    aiTextBudgetChars = chars
+                                    prefs.edit().putInt(AI_TEXT_BUDGET_KEY, chars).apply()
+                                    aiTextBudgetMenuExpanded = false
+                                }
+                            )
+                        }
                     }
                 }
 

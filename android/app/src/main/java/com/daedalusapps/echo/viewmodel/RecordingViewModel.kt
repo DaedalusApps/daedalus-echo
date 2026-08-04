@@ -14,6 +14,7 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.daedalusapps.echo.ai.activePrompt
+import com.daedalusapps.echo.ai.aiTextBudget
 import com.daedalusapps.echo.ai.buildLibraryQuestionPrompt
 import com.daedalusapps.echo.ai.buildNoteQuestionPrompt
 import com.daedalusapps.echo.ai.CHUNK_SUMMARY_PROMPT
@@ -389,7 +390,7 @@ class RecordingViewModel @JvmOverloads constructor(
 
             // Step 2: Summarize + mind map with Gemma (chunked for long transcripts)
             llm.ensureLoaded()
-            val chunks = chunkTranscript(transcript)
+            val chunks = chunkTranscript(transcript, aiTextBudget(getApplication()))
             val rawResponse = if (chunks.size == 1) {
                 _syncProgress.value = "Analyzing with Gemma…"
                 llm.generate(activePrompt(getApplication()), chunks[0])

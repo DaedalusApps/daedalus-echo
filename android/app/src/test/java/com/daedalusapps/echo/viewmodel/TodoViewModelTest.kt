@@ -1,7 +1,10 @@
 package com.daedalusapps.echo.viewmodel
 
 import android.app.Application
+import android.content.SharedPreferences
 import android.util.Log
+import com.daedalusapps.echo.ai.AI_TEXT_BUDGET_DEFAULT
+import com.daedalusapps.echo.ai.AI_TEXT_BUDGET_KEY
 import com.daedalusapps.echo.ai.LocalLlmService
 import com.daedalusapps.echo.data.db.AppDatabase
 import com.daedalusapps.echo.data.db.RecordingDao
@@ -30,6 +33,7 @@ class TodoViewModelTest {
     val instantTaskExecutorRule = InstantTaskExecutorRule()
 
     private val application = mockk<Application>(relaxed = true)
+    private val prefs = mockk<SharedPreferences>(relaxed = true)
     private val db = mockk<AppDatabase>(relaxed = true)
     private val todoDao = mockk<TodoDao>(relaxed = true)
     private val recordingDao = mockk<RecordingDao>(relaxed = true)
@@ -48,6 +52,8 @@ class TodoViewModelTest {
         every { Log.e(any(), any()) } returns 0
         every { Log.e(any(), any(), any()) } returns 0
 
+        every { application.getSharedPreferences(any(), any()) } returns prefs
+        every { prefs.getInt(AI_TEXT_BUDGET_KEY, any()) } returns AI_TEXT_BUDGET_DEFAULT
         every { db.todoDao() } returns todoDao
         every { db.recordingDao() } returns recordingDao
         every { todoDao.getAllFlow() } returns flowOf(emptyList())
@@ -213,6 +219,26 @@ class TodoViewModelTest {
         viewModel.updateFromRecordings(24)
         advanceUntilIdle()
 
+        coVerify(exactly = 2) { llm.generate(any(), any()) }
+    }
+
+    // 5b. Batching respects a smaller injected AI text budget: two moderate-size recordings
+    //     that would fit in one batch at the default budget (9,000 = 12,000*3/4) split into
+    //     two batches once the configured budget shrinks the derived MAX_BATCH_CHARS.
+    @Test
+    fun updateFromRecordings_smallerBudget_splitsIntoMoreBatches() = runTest {
+        every { prefs.getInt(AI_TEXT_BUDGET_KEY, any()) } returns 4_000 // -> MAX_BATCH_CHARS = 3,000
+        coEvery { recordingDao.getSince(any()) } returns listOf(
+            Recording(filename = "a.mp3", title = "A", summary = "x".repeat(2_000)),
+            Recording(filename = "b.mp3", title = "B", summary = "y".repeat(2_000))
+        )
+        coEvery { todoDao.getAllFlow() } returns flowOf(emptyList())
+        coEvery { llm.generate(any(), any()) } returns "- none"
+
+        viewModel.updateFromRecordings(24)
+        advanceUntilIdle()
+
+        // Combined blocks (~4,020 chars) exceed the derived 3,000-char batch cap -> 2 batches.
         coVerify(exactly = 2) { llm.generate(any(), any()) }
     }
 

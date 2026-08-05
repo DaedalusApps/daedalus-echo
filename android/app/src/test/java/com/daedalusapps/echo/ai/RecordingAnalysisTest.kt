@@ -10,6 +10,7 @@ import io.mockk.mockk
 import io.mockk.slot
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -38,6 +39,145 @@ class RecordingAnalysisTest {
     private val jsonResponse = """
         {"title": "Standup", "shortSummary": "Quick sync", "topics": ["standup", "sync"], "mindMap": "- point one", "fullSummary": "Discussed standup items."}
     """.trimIndent()
+
+    // Real degraded output captured from a device: Gemma answered as a free-form bullet list of
+    // quotes instead of following the JSON/markdown-field instruction. Neither tryParseJson nor
+    // tryParseMarkdown can extract any known field from this, so SmartAnalysisParser.parse falls
+    // back to SmartAnalysis(fullSummary = rawResponse) — blank title/shortSummary/topics/mindMap.
+    private val degradedBulletFixture = """
+        - “I need an offsite team building event”
+        - “September”
+        - “approximately” number – “how many people”
+        - “Mid-September” – “better than late-September”
+        - “Monday or Tuesday” – “This gives us some decent options”
+        - “half day” – “This helps determine logistical feasibility”
+        - “Relaxed and creative” – “more appealing”
+        - “activity-based and focused on team building”
+        - “Resort/Hotels” – “This can provide some space and have beautiful/cool views”
+        - “Campgrounds” – “This can be very relaxed and budget friendly but requires more planning regarding space and amenities”
+        - “Hotel Ballroom/Event Space” – “This can be more formal and can be customized easily”
+        - “More appealing” – “This feels more appealing”
+        - “Gunshot” – “This suggests there’s someone reacting negatively”
+        - “Venue ideas” – “Let’s find options based on Tuesday or Wednesday”
+        - “Resort/Hotels” – “This can provide some space and have beautiful/cool views”
+        - “Campgrounds” – “This can be very relaxed and budget friendly but requires more planning regarding space and amenities”
+        - “Hotel Ballroom/Event Space” – “This can be more formal and can be customized easily”
+    """.trimIndent()
+
+    @Test
+    fun updateSummary_degradedFreeFormResponse_derivesNonBlankTitleAndSummary() = runTest {
+        val transcript = "offsite planning discussion"
+        coEvery { llm.generate(any(), any<String>()) } returns degradedBulletFixture
+
+        analyzeTranscript(context, llm, embedder, repo, "note.mp3", transcript)
+
+        val titleSlot = slot<String>()
+        val shortSummarySlot = slot<String>()
+        coVerify(exactly = 1) {
+            repo.updateSummary(
+                filename = "note.mp3",
+                summary = any(),
+                mindMap = any(),
+                title = capture(titleSlot),
+                shortSummary = capture(shortSummarySlot),
+                topics = any()
+            )
+        }
+        assertTrue("title should not be blank", titleSlot.captured.isNotBlank())
+        assertTrue("shortSummary should not be blank", shortSummarySlot.captured.isNotBlank())
+    }
+
+    @Test
+    fun updateSummary_degradedFreeFormResponse_derivesSensibleTitle() = runTest {
+        val transcript = "offsite planning discussion"
+        coEvery { llm.generate(any(), any<String>()) } returns degradedBulletFixture
+
+        analyzeTranscript(context, llm, embedder, repo, "note.mp3", transcript)
+
+        val titleSlot = slot<String>()
+        coVerify(exactly = 1) {
+            repo.updateSummary(
+                filename = "note.mp3",
+                summary = any(),
+                mindMap = any(),
+                title = capture(titleSlot),
+                shortSummary = any(),
+                topics = any()
+            )
+        }
+        val title = titleSlot.captured
+        assertTrue("title should not be blank", title.isNotBlank())
+        assertTrue("title should not start with '-'", !title.startsWith("-"))
+        assertTrue(
+            "title should not start with a quote character",
+            !title.startsWith("\"") && !title.startsWith("'") &&
+                !title.startsWith("“") && !title.startsWith("‘")
+        )
+        assertTrue("title should be within the length cap", title.length <= 60)
+        assertTrue("title should be a single line", !title.contains("\n"))
+    }
+
+    @Test
+    fun updateSummary_wellFormedJson_isNotAlteredByFallback() = runTest {
+        val transcript = "short transcript"
+        coEvery { llm.generate(any(), any<String>()) } returns jsonResponse
+
+        analyzeTranscript(context, llm, embedder, repo, "note.mp3", transcript)
+
+        coVerify(exactly = 1) {
+            repo.updateSummary(
+                filename = "note.mp3",
+                summary = "Discussed standup items.",
+                mindMap = "- point one",
+                title = "Standup",
+                shortSummary = "Quick sync",
+                topics = listOf("standup", "sync")
+            )
+        }
+    }
+
+    @Test
+    fun updateSummary_partiallyParsedResponse_isLeftUntouched() = runTest {
+        val transcript = "short transcript"
+        // Has a title but blank shortSummary/mindMap/topics: NOT all four fields are blank, so the
+        // degraded-fallback guard must not engage and must not overwrite the partially-parsed result.
+        val partialJson = """
+            {"title": "Partial Title", "shortSummary": "", "topics": [], "mindMap": "", "fullSummary": "Some full summary text."}
+        """.trimIndent()
+        coEvery { llm.generate(any(), any<String>()) } returns partialJson
+
+        analyzeTranscript(context, llm, embedder, repo, "note.mp3", transcript)
+
+        coVerify(exactly = 1) {
+            repo.updateSummary(
+                filename = "note.mp3",
+                summary = "Some full summary text.",
+                mindMap = "",
+                title = "Partial Title",
+                shortSummary = "",
+                topics = emptyList()
+            )
+        }
+    }
+
+    @Test
+    fun updateSummary_degradedFreeFormResponse_topicsAndMindMapRemainEmpty() = runTest {
+        val transcript = "offsite planning discussion"
+        coEvery { llm.generate(any(), any<String>()) } returns degradedBulletFixture
+
+        analyzeTranscript(context, llm, embedder, repo, "note.mp3", transcript)
+
+        coVerify(exactly = 1) {
+            repo.updateSummary(
+                filename = "note.mp3",
+                summary = any(),
+                mindMap = "",
+                title = any(),
+                shortSummary = any(),
+                topics = emptyList()
+            )
+        }
+    }
 
     @Test
     fun singlePass_callsGenerateOnceWithActivePrompt() = runTest {

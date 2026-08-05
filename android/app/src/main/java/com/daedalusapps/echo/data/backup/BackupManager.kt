@@ -336,7 +336,13 @@ class BackupManager(
         // org.json may parse the rate as Integer or Double depending on the literal's shape
         // (e.g. a bare `1` vs `1.75`); read it as Double via optDouble and convert explicitly
         // so the stored pref type is always Float, never inferred from the JSON runtime type.
-        if (settings.has(CONVERSATION_TTS_RATE_KEY)) editor.putFloat(CONVERSATION_TTS_RATE_KEY, settings.optDouble(CONVERSATION_TTS_RATE_KEY).toFloat())
+        // A hand-edited or corrupt backup can also carry a non-number (-> NaN) or an absurd
+        // rate; both are ignored by TextToSpeech.setSpeechRate, which would leave a restored
+        // install seemingly mute. Clamp to the range the speed picker offers (0.75x..2x).
+        if (settings.has(CONVERSATION_TTS_RATE_KEY)) {
+            val rate = settings.optDouble(CONVERSATION_TTS_RATE_KEY, 1.0).toFloat()
+            editor.putFloat(CONVERSATION_TTS_RATE_KEY, if (rate.isNaN()) 1.0f else rate.coerceIn(0.75f, 2.0f))
+        }
         if (settings.has(CONVERSATION_TTS_VOICE_KEY)) editor.putString(CONVERSATION_TTS_VOICE_KEY, settings.optString(CONVERSATION_TTS_VOICE_KEY))
         if (settings.has(CONVERSATION_INSTANT_SEND_KEY)) editor.putBoolean(CONVERSATION_INSTANT_SEND_KEY, settings.optBoolean(CONVERSATION_INSTANT_SEND_KEY))
         if (settings.has(CONVERSATION_AUTO_LISTEN_KEY)) editor.putBoolean(CONVERSATION_AUTO_LISTEN_KEY, settings.optBoolean(CONVERSATION_AUTO_LISTEN_KEY))

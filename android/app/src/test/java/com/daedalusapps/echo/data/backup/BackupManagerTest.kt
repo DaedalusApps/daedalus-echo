@@ -307,6 +307,36 @@ class BackupManagerTest {
     }
 
     @Test
+    fun settingsRestore_corruptTtsRate_neverStoresNaNOrOutOfRangeRate() = runBlocking {
+        // A hand-edited or corrupt backup can carry a non-number or an absurd rate.
+        // TextToSpeech.setSpeechRate ignores both, so an unguarded restore would leave the
+        // user seemingly mute with no speed preset selected in the picker.
+        val cases = listOf(
+            "fast" to 1.0f,      // non-numeric -> would be NaN
+            "NaN" to 1.0f,       // parses to NaN
+            0 to 0.75f,          // below the picker's slowest preset
+            50 to 2.0f           // far above the picker's fastest preset
+        )
+
+        for ((jsonValue, expected) in cases) {
+            prefs().edit().clear().commit()
+            val json = JSONObject().apply {
+                put("backupVersion", 2)
+                put("recordings", JSONArray())
+                put("settings", JSONObject().apply { put(CONVERSATION_TTS_RATE_KEY, jsonValue) })
+            }
+
+            val target = newDb()
+            BackupManager(context, target).importFromJson(json)
+
+            val stored = prefs().getFloat(CONVERSATION_TTS_RATE_KEY, -1f)
+            assertFalse("rate for $jsonValue must not be NaN", stored.isNaN())
+            assertEquals("rate for $jsonValue", expected, stored, 0.0001f)
+            target.close()
+        }
+    }
+
+    @Test
     fun v2ExportRoundTrip_freshDefaults_overwriteNonDefaultTargetValues() = runBlocking {
         // Fresh prefs export: every documented default is exported even though never touched.
         val source = newDb()

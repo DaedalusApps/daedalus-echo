@@ -166,6 +166,21 @@ class RecordingAnalysisTest {
     }
 
     @Test
+    fun updateSummary_degradedResponseWithNonBreakingSpaceBeforeMarker_stillStripsTheMarker() =
+        runTest {
+            // trimStart only knows ' ' and '\t', so a non-breaking space in front of the bullet
+            // must be removed by the leading trim() or the title keeps its "- " marker.
+            val (title, _) =
+                capturePersistedTitleAndSummary("-\n\u00A0- Offsite venue options", "tx")
+
+            assertTrue("title should not start with a marker, was '$title'", !title.startsWith("-"))
+            assertTrue(
+                "title should come from the first line with content, was '$title'",
+                title.startsWith("Offsite venue options")
+            )
+        }
+
+    @Test
     fun updateSummary_wellFormedJson_isNotAlteredByFallback() = runTest {
         val transcript = "short transcript"
         coEvery { llm.generate(any(), any<String>()) } returns jsonResponse

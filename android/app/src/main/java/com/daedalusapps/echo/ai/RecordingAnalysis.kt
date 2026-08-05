@@ -105,7 +105,11 @@ private fun deriveFallbackTitle(source: String): String {
     // opening with a bare "-" or "###" would otherwise title the note from that marker alone.
     val cleaned = source.lineSequence()
         .map { line ->
-            line.trimStart('-', '*', '#', ' ', '\t')
+            // trim() first, as the pre-#64 code did: it also strips non-breaking/unicode
+            // spaces, which trimStart (only ' ' and tab) would otherwise leave in front of
+            // the bullet, stopping the marker from being stripped.
+            line.trim()
+                .trimStart('-', '*', '#', ' ', '\t')
                 .trim('"', '\'', '“', '”', '‘', '’', ' ')
                 .replace(Regex("\\s+"), " ")
                 .trim()

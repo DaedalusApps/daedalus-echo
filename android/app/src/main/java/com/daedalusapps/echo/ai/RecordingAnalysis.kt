@@ -101,13 +101,16 @@ private fun deriveFallbackAnalysis(analysis: SmartAnalysis, transcript: String):
 }
 
 private fun deriveFallbackTitle(source: String): String {
-    val firstLine = source.lineSequence().map { it.trim() }.firstOrNull { it.isNotBlank() } ?: ""
-    val cleaned = firstLine
-        .trimStart('-', '*', '#', ' ', '\t')
-        .trim('"', '\'', '“', '”', '‘', '’', ' ')
-        .replace(Regex("\\s+"), " ")
-        .trim()
-    if (cleaned.isBlank()) return ANALYSIS_FALLBACK_TITLE
+    // First line with content *after* cleaning, not merely the first non-blank one: a response
+    // opening with a bare "-" or "###" would otherwise title the note from that marker alone.
+    val cleaned = source.lineSequence()
+        .map { line ->
+            line.trimStart('-', '*', '#', ' ', '\t')
+                .trim('"', '\'', '“', '”', '‘', '’', ' ')
+                .replace(Regex("\\s+"), " ")
+                .trim()
+        }
+        .firstOrNull { it.isNotBlank() } ?: return ANALYSIS_FALLBACK_TITLE
     return truncateAnalysisTextAtWordBoundary(cleaned, ANALYSIS_TITLE_MAX_LENGTH)
         .ifBlank { ANALYSIS_FALLBACK_TITLE }
 }

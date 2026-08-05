@@ -2,13 +2,17 @@ package com.daedalusapps.echo.ai
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import com.daedalusapps.echo.data.RecordingRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
 import io.mockk.slot
+import io.mockk.unmockkStatic
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -34,6 +38,14 @@ class RecordingAnalysisTest {
         repo = mockk(relaxed = true)
 
         every { embedder.isReady } returns false
+
+        mockkStatic(Log::class)
+        every { Log.w(any(), any<String>()) } returns 0
+    }
+
+    @After
+    fun tearDown() {
+        unmockkStatic(Log::class)
     }
 
     private val jsonResponse = """

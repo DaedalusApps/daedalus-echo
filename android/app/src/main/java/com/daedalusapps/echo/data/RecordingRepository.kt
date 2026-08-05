@@ -30,13 +30,19 @@ class RecordingRepository(private val dao: RecordingDao) {
         dao.updateEmbeddingBytes(filename, bytes)
     }
 
-    fun semanticSearch(queryEmbedding: FloatArray, candidates: List<Recording>, topK: Int = 5): List<Recording> {
+    fun semanticSearch(
+        queryEmbedding: FloatArray,
+        candidates: List<Recording>,
+        topK: Int = 5,
+        minScore: Float = Float.NEGATIVE_INFINITY
+    ): List<Recording> {
         return candidates
             .mapNotNull { r ->
                 val emb = r.embedding ?: return@mapNotNull null
                 val score = cosineSimilarity(queryEmbedding, emb)
                 r to score
             }
+            .filter { it.second >= minScore }
             .sortedByDescending { it.second }
             .take(topK)
             .map { it.first }

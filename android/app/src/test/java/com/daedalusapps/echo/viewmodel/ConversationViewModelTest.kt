@@ -2380,4 +2380,24 @@ class ConversationViewModelTest {
         assertFalse("a replay taking the engine over must not open the mic", vm.isRecordingVoice.value)
         verify(exactly = 0) { audioRecorder.start(any(), any()) }
     }
+
+    // (#31 / ED.6) "New conversation" must stay disabled with nothing to lose.
+    @Test
+    fun canStartNewSession_falseWhenNoMessages() {
+        assertFalse(canStartNewSession(emptyList(), isGenerating = false))
+    }
+
+    // (#31 / ED.6) Disabled while a generation is in flight, even with messages present.
+    @Test
+    fun canStartNewSession_falseWhileGenerating() {
+        val messages = listOf(ChatMessage(Role.USER, "hi", 0L))
+        assertFalse(canStartNewSession(messages, isGenerating = true))
+    }
+
+    // (#31 / ED.6) Enabled once there is something to rotate away from and nothing in flight.
+    @Test
+    fun canStartNewSession_trueWithMessagesAndNotGenerating() {
+        val messages = listOf(ChatMessage(Role.USER, "hi", 0L))
+        assertTrue(canStartNewSession(messages, isGenerating = false))
+    }
 }

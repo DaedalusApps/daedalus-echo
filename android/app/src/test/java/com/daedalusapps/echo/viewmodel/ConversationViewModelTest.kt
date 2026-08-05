@@ -2016,4 +2016,368 @@ class ConversationViewModelTest {
             voiceButtonState(isRecordingVoice = true, isTranscribing = true, isGenerating = true)
         )
     }
+
+    // ---- Hands-free auto-listen loop (#30 / ED.5), ported from notetaker P9.4/#56/#72 ----
+
+    // (P9.4-a) Both toggles on, TTS off: the model reply landing in performSend() triggers the
+    //     recorder to start right away (the immediate, non-speech path).
+    @Test
+    fun autoListen_bothTogglesOnTtsOff_modelReplyTriggersRecorderStart() = runTest {
+        markWhisperReady()
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.setInstantSend(true)
+        vm.setAutoListen(true)
+        vm.setConversationVisible(true)
+
+        vm.send("Hello")
+        advanceUntilIdle()
+
+        verify(exactly = 1) { audioRecorder.start(any(), any()) }
+        assertTrue(vm.isRecordingVoice.value)
+    }
+
+    // (P9.4-b) TTS on: the recorder must NOT start while the reply is still being spoken, only
+    //     once the wrapper reports speaking=false for that auto-speak utterance.
+    @Test
+    fun autoListen_ttsOn_startsOnlyAfterAutoSpeakUtteranceFinishes_notBeforehand() = runTest {
+        markWhisperReady()
+        val listenerSlot = slot<(Boolean) -> Unit>()
+        every { tts.setOnSpeakingChangedListener(capture(listenerSlot)) } returns Unit
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.setTtsEnabled(true)
+        vm.setInstantSend(true)
+        vm.setAutoListen(true)
+        vm.setConversationVisible(true)
+
+        vm.send("Hello")
+        advanceUntilIdle()
+
+        verify(exactly = 0) { audioRecorder.start(any(), any()) }
+        assertFalse(vm.isRecordingVoice.value)
+
+        listenerSlot.captured(false)
+
+        verify(exactly = 1) { audioRecorder.start(any(), any()) }
+        assertTrue(vm.isRecordingVoice.value)
+    }
+
+    // (P9.4-b2) A REPLAY finishing must never trigger auto-listen — only the reply's own
+    //     auto-speak utterance (armed via awaitingAutoListen) does.
+    @Test
+    fun autoListen_replayFinishing_neverTriggersRecorderStart() = runTest {
+        markWhisperReady()
+        val listenerSlot = slot<(Boolean) -> Unit>()
+        every { tts.setOnSpeakingChangedListener(capture(listenerSlot)) } returns Unit
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.setInstantSend(true)
+        vm.setAutoListen(true)
+        vm.setConversationVisible(true)
+        // TTS stays off, so send()'s own auto-listen trigger fires immediately; drain it so it
+        // doesn't interfere with the replay assertion below.
+        vm.send("Hello")
+        advanceUntilIdle()
+        assertTrue(vm.isRecordingVoice.value)
+        vm.cancelVoiceInput()
+
+        val id = vm.messages.value.indexOfLast { it.role == Role.MODEL }.toString()
+        vm.replayMessage(id)
+        listenerSlot.captured(false) // the replay finishes speaking
+
+        assertFalse("a replay finishing must never trigger auto-listen", vm.isRecordingVoice.value)
+    }
+
+    // (P9.4-c) autoListen off (instantSend on) must never trigger.
+    @Test
+    fun autoListen_autoListenOff_noTrigger() = runTest {
+        markWhisperReady()
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.setInstantSend(true)
+        vm.setConversationVisible(true)
+
+        vm.send("Hello")
+        advanceUntilIdle()
+
+        assertFalse(vm.isRecordingVoice.value)
+        verify(exactly = 0) { audioRecorder.start(any(), any()) }
+    }
+
+    // (P9.4-c2, superseded by #72) This used to assert that setAutoListen(true) alone — which left
+    // instantSend off — never triggered. Under the #72 coupling that combination is no longer
+    // reachable through the public setters, so the case now proves the end-to-end payoff instead:
+    // flipping auto-listen on by itself actually starts the hands-free loop. maybeAutoListen's
+    // !instantSend guard is retained as defence in depth but is consequently no longer covered.
+    @Test
+    fun autoListen_setAutoListenAlone_triggers_sinceInstantSendIsCoupledOn() = runTest {
+        markWhisperReady()
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.setAutoListen(true)
+        vm.setConversationVisible(true)
+
+        vm.send("Hello")
+        advanceUntilIdle()
+
+        assertTrue(vm.isRecordingVoice.value)
+        verify(exactly = 1) { audioRecorder.start(any(), any()) }
+    }
+
+    // (P9.4-d) A blank transcription suppresses exactly the next auto-listen trigger; the one
+    //     after that fires normally again.
+    @Test
+    fun autoListen_emptyTranscription_suppressesNextTriggerOnceThenResumes() = runTest {
+        markWhisperReady()
+        every { audioRecorder.start(any(), any()) } returns Unit
+        coEvery { transcriptionService.transcribe(any()) } returns "   "
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.setInstantSend(true)
+        vm.setAutoListen(true)
+        vm.setConversationVisible(true)
+
+        vm.startVoiceInput()
+        vm.stopVoiceInput()
+        advanceUntilIdle()
+        assertEquals("Didn't catch that", vm.error.value)
+        assertFalse(vm.isRecordingVoice.value)
+
+        vm.send("typed manually")
+        advanceUntilIdle()
+        assertFalse("blank transcription must suppress the very next auto-listen trigger", vm.isRecordingVoice.value)
+
+        vm.send("another message")
+        advanceUntilIdle()
+        assertTrue("suppression must be consumed by the one skipped trigger", vm.isRecordingVoice.value)
+    }
+
+    // (P9.4-d2) A manual mic press clears the suppression outright, independent of any trigger
+    //     having consumed it.
+    @Test
+    fun autoListen_manualStartVoiceInputClearsSuppression() = runTest {
+        markWhisperReady()
+        every { audioRecorder.start(any(), any()) } returns Unit
+        coEvery { transcriptionService.transcribe(any()) } returnsMany listOf("   ", "second try")
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.setInstantSend(true)
+        vm.setAutoListen(true)
+        vm.setConversationVisible(true)
+
+        vm.startVoiceInput()
+        vm.stopVoiceInput()
+        advanceUntilIdle()
+        assertEquals("Didn't catch that", vm.error.value)
+
+        vm.startVoiceInput() // manual press clears the suppression
+        vm.stopVoiceInput()
+        advanceUntilIdle()
+
+        assertTrue("suppression cleared by the manual press must not block this trigger", vm.isRecordingVoice.value)
+    }
+
+    // (P9.4-e) A trigger must never fire while the conversation screen isn't visible.
+    @Test
+    fun autoListen_notVisible_noTrigger() = runTest {
+        markWhisperReady()
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.setInstantSend(true)
+        vm.setAutoListen(true)
+
+        vm.send("Hello")
+        advanceUntilIdle()
+
+        assertFalse(vm.isRecordingVoice.value)
+        verify(exactly = 0) { audioRecorder.start(any(), any()) }
+    }
+
+    // (P9.4-e2) A trigger that arrives while not visible is dropped, not queued — becoming
+    //     visible afterward must not retroactively fire it.
+    @Test
+    fun autoListen_triggerWhileNotVisible_isDroppedNotQueued() = runTest {
+        markWhisperReady()
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.setInstantSend(true)
+        vm.setAutoListen(true)
+
+        vm.send("Hello")
+        advanceUntilIdle()
+        assertFalse(vm.isRecordingVoice.value)
+
+        vm.setConversationVisible(true)
+
+        assertFalse("a dropped trigger must not fire retroactively on becoming visible", vm.isRecordingVoice.value)
+    }
+
+    // (P9.4-f) stopGenerating() clears an armed auto-listen trigger — no surprise mic after a
+    //     cancelled turn even though the auto-speak utterance keeps "speaking" in the mock.
+    @Test
+    fun autoListen_stopGenerating_clearsArmedTrigger() = runTest {
+        markWhisperReady()
+        val listenerSlot = slot<(Boolean) -> Unit>()
+        every { tts.setOnSpeakingChangedListener(capture(listenerSlot)) } returns Unit
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.setTtsEnabled(true)
+        vm.setInstantSend(true)
+        vm.setAutoListen(true)
+        vm.setConversationVisible(true)
+
+        vm.send("Hello")
+        advanceUntilIdle()
+
+        vm.stopGenerating()
+        listenerSlot.captured(false)
+
+        assertFalse("stopGenerating must clear the armed auto-listen trigger", vm.isRecordingVoice.value)
+        verify(exactly = 0) { audioRecorder.start(any(), any()) }
+    }
+
+    // (P9.4-g) The toggle persists to SharedPreferences and is restored by a fresh ViewModel.
+    @Test
+    fun setAutoListen_persistsAndRestoredByNewViewModel() = runTest {
+        val vm = newViewModel()
+        assertFalse(vm.autoListen.value)
+
+        vm.setAutoListen(true)
+        assertTrue(vm.autoListen.value)
+        assertTrue(prefs().getBoolean(CONVERSATION_AUTO_LISTEN_KEY, false))
+
+        val reloaded = newViewModel()
+        assertTrue(reloaded.autoListen.value)
+    }
+
+    // (#72-a) setAutoListen(true) also enables instant send: both flows and both prefs.
+    @Test
+    fun setAutoListen_true_alsoEnablesInstantSend() = runTest {
+        val vm = newViewModel()
+        assertFalse(vm.instantSend.value)
+        assertFalse(vm.autoListen.value)
+
+        vm.setAutoListen(true)
+
+        assertTrue(vm.autoListen.value)
+        assertTrue(vm.instantSend.value)
+        assertTrue(prefs().getBoolean(CONVERSATION_AUTO_LISTEN_KEY, false))
+        assertTrue(prefs().getBoolean(CONVERSATION_INSTANT_SEND_KEY, false))
+    }
+
+    // (#72-b) setInstantSend(false) also disables auto-listen, when both were on: both flows and
+    // both prefs.
+    @Test
+    fun setInstantSend_false_alsoDisablesAutoListen_whenBothOn() = runTest {
+        val vm = newViewModel()
+        vm.setInstantSend(true)
+        vm.setAutoListen(true)
+        assertTrue(vm.instantSend.value)
+        assertTrue(vm.autoListen.value)
+
+        vm.setInstantSend(false)
+
+        assertFalse(vm.instantSend.value)
+        assertFalse(vm.autoListen.value)
+        assertFalse(prefs().getBoolean(CONVERSATION_INSTANT_SEND_KEY, false))
+        assertFalse(prefs().getBoolean(CONVERSATION_AUTO_LISTEN_KEY, false))
+    }
+
+    // (#72-c) setInstantSend(true) alone must not touch auto-listen.
+    @Test
+    fun setInstantSend_true_alone_doesNotTouchAutoListen() = runTest {
+        val vm = newViewModel()
+
+        vm.setInstantSend(true)
+
+        assertTrue(vm.instantSend.value)
+        assertFalse(vm.autoListen.value)
+        assertFalse(prefs().getBoolean(CONVERSATION_AUTO_LISTEN_KEY, false))
+    }
+
+    // (#72-c2) setAutoListen(false) alone must not touch instant send.
+    @Test
+    fun setAutoListen_false_alone_doesNotTouchInstantSend() = runTest {
+        val vm = newViewModel()
+        vm.setInstantSend(true)
+        vm.setAutoListen(true)
+        assertTrue(vm.instantSend.value)
+
+        vm.setAutoListen(false)
+
+        assertFalse(vm.autoListen.value)
+        assertTrue(vm.instantSend.value)
+        assertTrue(prefs().getBoolean(CONVERSATION_INSTANT_SEND_KEY, false))
+    }
+
+    // (#72-d) Init normalization: prefs holding autoListen=true and instantSend=false (an install
+    // upgrading from a pre-#72-equivalent build, or a restored backup carrying that pair —
+    // BackupManager writes both keys straight to prefs) must be normalized at VM construction to
+    // autoListen=false — the more conservative setting — rather than silently turning instant send
+    // on. The normalization is persisted so it isn't re-applied (and re-logged) on every
+    // subsequent load.
+    @Test
+    fun init_inconsistentPrefs_autoListenTrueInstantSendFalse_normalizesAutoListenToFalse() = runTest {
+        prefs().edit()
+            .putBoolean(CONVERSATION_AUTO_LISTEN_KEY, true)
+            .putBoolean(CONVERSATION_INSTANT_SEND_KEY, false)
+            .commit()
+
+        val vm = newViewModel()
+
+        assertFalse(vm.autoListen.value)
+        assertFalse(vm.instantSend.value)
+        assertFalse(prefs().getBoolean(CONVERSATION_AUTO_LISTEN_KEY, false))
+        assertFalse(prefs().getBoolean(CONVERSATION_INSTANT_SEND_KEY, false))
+    }
+
+    /**
+     * Arms an auto-spoken reply and makes the mock report speaking=false synchronously from
+     * stop(), the way AndroidSpeechService.stop() does — a flushed utterance is not guaranteed to
+     * deliver its completion callback, so the real engine emits that signal from stop() itself.
+     * Tests that a deliberate stop cannot be turned into a hands-free mic depend on it.
+     */
+    private fun sendReplyBeingSpoken(): ConversationViewModel {
+        markWhisperReady()
+        val listenerSlot = slot<(Boolean) -> Unit>()
+        every { tts.setOnSpeakingChangedListener(capture(listenerSlot)) } returns Unit
+        every { tts.stop() } answers { listenerSlot.captured(false) }
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.setTtsEnabled(true)
+        vm.setInstantSend(true)
+        vm.setAutoListen(true)
+        vm.setConversationVisible(true)
+        return vm
+    }
+
+    // (P9.4-h) Muting mid-reply stops the speech — it must not be read as "the reply finished
+    //     speaking" and open the mic the user just silenced.
+    @Test
+    fun autoListen_muteWhileReplySpeaking_doesNotOpenMic() = runTest {
+        val vm = sendReplyBeingSpoken()
+
+        vm.send("Hello")
+        advanceUntilIdle()
+        vm.setTtsEnabled(false) // mute tap while the reply is being spoken
+
+        assertFalse("muting must not open the mic", vm.isRecordingVoice.value)
+        verify(exactly = 0) { audioRecorder.start(any(), any()) }
+    }
+
+    // (P9.4-h2) A replay tapped while the reply is still being spoken takes the engine over; the
+    //     cut-short reply must not fire the hands-free mic.
+    @Test
+    fun autoListen_replayTappedWhileReplySpeaking_doesNotOpenMic() = runTest {
+        val vm = sendReplyBeingSpoken()
+
+        vm.send("Hello")
+        advanceUntilIdle()
+        val id = vm.messages.value.indexOfLast { it.role == Role.MODEL }.toString()
+        vm.replayMessage(id)
+
+        assertFalse("a replay taking the engine over must not open the mic", vm.isRecordingVoice.value)
+        verify(exactly = 0) { audioRecorder.start(any(), any()) }
+    }
 }

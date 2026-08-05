@@ -97,6 +97,9 @@ const val CONVERSATION_TTS_VOICE_KEY = "conversation_tts_voice"
 /** SharedPreferences key for whether a voice transcription is sent immediately (Boolean, default false). */
 const val CONVERSATION_INSTANT_SEND_KEY = "conversation_instant_send"
 
+/** SharedPreferences key for the hands-free auto-listen loop (Boolean, default false). */
+const val CONVERSATION_AUTO_LISTEN_KEY = "conversation_auto_listen"
+
 private const val TTS_RATE_DEFAULT = 1.0f
 private const val TTS_VOICE_DEFAULT = ""
 
@@ -127,7 +130,9 @@ private val TURN_HEADER_REGEX = Regex("""^\*\*(Me|Agent)\*\* \((\d{2}):(\d{2})\)
  * instead of being posted into [voiceTranscript] for the user to review/edit first. See
  * [stopVoiceInput].
  *
- * Deliberately excluded for now (later issues): auto-listen/replay behavior.
+ * Also includes the hands-free auto-listen loop (#30 / ED.5): when [autoListen] and [instantSend]
+ * are both on and the conversation screen is visible, a reply completing automatically starts the
+ * next voice recording — see [maybeAutoListen].
  */
 class ConversationViewModel @JvmOverloads constructor(
     application: Application,
@@ -190,7 +195,15 @@ class ConversationViewModel @JvmOverloads constructor(
             _isSpeaking.value = speaking
             // Speech ending for any reason (natural completion, another stop, an error) resets
             // whichever bubble's replay icon was showing Stop — a replay is not exempt from this.
-            if (!speaking) _speakingMessageId.value = null
+            if (!speaking) {
+                _speakingMessageId.value = null
+                // Only the auto-speak utterance armed by performSend() consumes this — a
+                // replay finishing never touches awaitingAutoListen, so it never triggers here.
+                if (awaitingAutoListen) {
+                    awaitingAutoListen = false
+                    maybeAutoListen()
+                }
+            }
         }
         // Same thread-safety note as above applies to the ready callback: it also fires
         // immediately with the current known state at registration, so a caller that checks after
@@ -254,9 +267,11 @@ class ConversationViewModel @JvmOverloads constructor(
     fun stopSpeaking() {
         // Cleared BEFORE stopping: the engine may report speaking=false synchronously from stop()
         // (a flushed utterance may never deliver its completion callback), so clearing afterwards
-        // would race the speaking listener's own clear. Every deliberate speech-stopping action
-        // (send, startVoiceInput, endSession, startNewSession, muting, screen dispose) routes
-        // through here — an interrupted replay must not keep claiming to be the one speaking.
+        // would let the speaking listener read the flag as "the reply finished" and open the mic.
+        // Every deliberate speech-stopping action (send, endSession, startNewSession, muting,
+        // screen dispose) routes through here — an interrupted reply must not still fire the
+        // hands-free mic once it's cut short.
+        awaitingAutoListen = false
         pendingReplayId = null
         _speakingMessageId.value = null
         if (_ttsEnabled.value || ttsDelegate.isInitialized()) tts.stop()
@@ -277,6 +292,10 @@ class ConversationViewModel @JvmOverloads constructor(
      */
     fun replayMessage(id: String) {
         if (messageForId(id) == null) return
+        // Same ordering requirement as stopSpeaking(): this stop() may report speaking=false
+        // synchronously, and a replay taking the engine over from an auto-spoken reply must not
+        // be mistaken for that reply finishing.
+        awaitingAutoListen = false
         tts.stop()
         if (tts.isAvailable) startReplay(id) else pendingReplayId = id
     }
@@ -371,23 +390,104 @@ class ConversationViewModel @JvmOverloads constructor(
     )
     val instantSend: StateFlow<Boolean> = _instantSend
 
-    // Method shape (setter + separate persist) kept the same as notetaker's, even though there is
-    // no auto-listen coupling to persist here yet, so #30's diff — which adds that coupling — stays
-    // small.
+    /**
+     * Sets instant send. Turning it OFF also turns auto-listen off (#30, mirroring notetaker's
+     * #72): auto-listen only functions when instant send is on (see [maybeAutoListen]), so
+     * leaving it on with instant send off would silently strand a toggle the user can see but
+     * that no longer does anything. Turning it ON, alone, leaves auto-listen untouched — the
+     * dependency runs one direction only.
+     */
     fun setInstantSend(enabled: Boolean) {
         _instantSend.value = enabled
+        if (!enabled && _autoListen.value) _autoListen.value = false
+        persistInstantSendAndAutoListen()
+    }
+
+    // Hands-free auto-listen loop (#30): when on, AND instant send is also on, a reply completing
+    // (see awaitingAutoListen/maybeAutoListen) automatically starts the next voice recording, so
+    // the user never has to tap the mic again mid-conversation.
+    private val _autoListen = MutableStateFlow(
+        application.getSharedPreferences("daedalus_prefs", Context.MODE_PRIVATE)
+            .getBoolean(CONVERSATION_AUTO_LISTEN_KEY, false)
+    )
+    val autoListen: StateFlow<Boolean> = _autoListen
+
+    init {
+        // Normalizes an inconsistent persisted state (#30, mirroring notetaker's #72):
+        // autoListen=true with instantSend=false is not producible by the setters below, but two
+        // paths still deliver it — an install upgrading from a pre-coupling build, where
+        // setAutoListen(true) alone was legal, and a restored backup carrying such a pair.
+        // Auto-listen depends on instant send to function at all (see maybeAutoListen), so the
+        // conservative choice is to turn auto-listen OFF rather than silently turning instant send
+        // ON — the user never explicitly opted into instant send in that scenario, and enabling it
+        // for them would start sending their voice input automatically without consent.
+        if (_autoListen.value && !_instantSend.value) {
+            _autoListen.value = false
+            persistInstantSendAndAutoListen()
+        }
+    }
+
+    /**
+     * Sets auto-listen. Turning it ON also turns instant send on (#30, mirroring notetaker's
+     * #72), since auto-listen only functions when instant send is also on (see [maybeAutoListen])
+     * — flipping this on alone would silently do nothing. Turning it OFF, alone, leaves instant
+     * send untouched.
+     */
+    fun setAutoListen(enabled: Boolean) {
+        _autoListen.value = enabled
+        if (enabled && !_instantSend.value) _instantSend.value = true
+        persistInstantSendAndAutoListen()
+    }
+
+    /** Persists both flows' current values in one editor apply, per the setters above. */
+    private fun persistInstantSendAndAutoListen() {
         getApplication<Application>()
             .getSharedPreferences("daedalus_prefs", Context.MODE_PRIVATE)
             .edit()
-            .putBoolean(CONVERSATION_INSTANT_SEND_KEY, enabled)
+            .putBoolean(CONVERSATION_INSTANT_SEND_KEY, _instantSend.value)
+            .putBoolean(CONVERSATION_AUTO_LISTEN_KEY, _autoListen.value)
             .apply()
     }
 
-    // Auto-listen must never spin on silence once it exists (#30): a blank transcription in
-    // stopVoiceInput() arms this so the next auto-listen trigger can skip itself. Unused until
-    // #30 wires up the auto-listen loop.
+    // Whether the conversation screen is currently on-screen (#30): auto-listen must only fire
+    // while the user is actually looking at it — a trigger arriving while backgrounded is
+    // dropped, not queued. Set by the screen via a lifecycle observer (ON_RESUME/ON_PAUSE).
+    private var conversationVisible = false
+
+    fun setConversationVisible(visible: Boolean) {
+        conversationVisible = visible
+    }
+
+    // Armed right when performSend() hands the just-arrived reply to tts.speak() for auto-speak
+    // (never by replayMessage()/startReplay(), which speak the same way but are a distinct,
+    // explicit per-bubble action) — so the speaking-changed listener can tell "the reply we just
+    // sent finished speaking" apart from "an unrelated replay finished speaking" and only
+    // auto-listen for the former. Volatile because that listener callback can arrive off the main
+    // thread (see ttsDelegate's KDoc).
+    @Volatile
+    private var awaitingAutoListen = false
+
+    // Auto-listen must never spin on silence: a blank transcription in stopVoiceInput() arms
+    // this, and the very next auto-listen trigger is skipped (and consumes the flag) instead of
+    // starting another recording. A manual mic press (startVoiceInput) clears it, since that is
+    // the user explicitly taking back control.
     @Volatile
     private var suppressNextAutoListen = false
+
+    /**
+     * Starts the next voice recording hands-free after a reply completes (#30), if the user has
+     * opted into both instant send and auto-listen, the screen is visible, and the last
+     * transcription wasn't blank. Reuses [startVoiceInput]'s own busy guards, so a trigger that
+     * can't currently start (already recording/transcribing/generating) silently no-ops.
+     */
+    private fun maybeAutoListen() {
+        if (!_instantSend.value || !_autoListen.value || !conversationVisible) return
+        if (suppressNextAutoListen) {
+            suppressNextAutoListen = false
+            return
+        }
+        startVoiceInput()
+    }
 
     /** File backing the current session; exposed internally so tests can assert on its content. */
     internal lateinit var sessionFile: File
@@ -543,6 +643,8 @@ class ConversationViewModel @JvmOverloads constructor(
     /** Cancels the in-flight generation started by [send] or [endSession]. */
     fun stopGenerating() {
         generationJob?.cancel()
+        // No surprise mic after a cancelled turn.
+        awaitingAutoListen = false
     }
 
     /**
@@ -639,6 +741,10 @@ class ConversationViewModel @JvmOverloads constructor(
      * block.
      */
     private suspend fun performSend(trimmed: String) {
+        // Set only on the success path, when the reply won't be auto-spoken (#30): auto-speak's
+        // completion instead arms awaitingAutoListen, below. Checked after the finally block so
+        // startVoiceInput()'s busy guard sees isGenerating already cleared.
+        var autoListenAfterReply = false
         try {
             loadJob.join()
             val userMessage = ChatMessage(Role.USER, trimmed, clock())
@@ -655,7 +761,10 @@ class ConversationViewModel @JvmOverloads constructor(
                 // The arriving reply takes the engine over from a replay tapped mid-generation,
                 // whose bubble would otherwise keep showing Stop for speech that is no longer its.
                 _speakingMessageId.value = null
+                awaitingAutoListen = true
                 tts.speak(reply)
+            } else {
+                autoListenAfterReply = true
             }
         } catch (e: TimeoutCancellationException) {
             // generate()'s 3-minute timeout surfaces as a CancellationException subtype, but it is
@@ -673,6 +782,7 @@ class ConversationViewModel @JvmOverloads constructor(
         } finally {
             _isGenerating.value = false
         }
+        if (autoListenAfterReply) maybeAutoListen()
     }
 
     /**

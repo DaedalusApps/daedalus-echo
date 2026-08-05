@@ -145,6 +145,27 @@ class RecordingAnalysisTest {
     }
 
     @Test
+    fun updateSummary_degradedResponseOpeningWithABareMarker_titlesFromTheFirstRealLine() = runTest {
+        // The first non-blank line is nothing but a bullet marker; the title must come from the
+        // first line that still has content after cleaning, not from the marker line.
+        val (title, _) = capturePersistedTitleAndSummary("-\n###\n- Offsite venue options", "tx")
+
+        assertTrue(
+            "title should come from the first line with content, was '$title'",
+            title.startsWith("Offsite venue options")
+        )
+    }
+
+    @Test
+    fun updateSummary_degradedResponseAllMarkerLines_stillFallsBackToPlaceholderTitle() = runTest {
+        // Every line is nothing but markers; cleaning strips all of them to nothing, so this must
+        // still land on the stable placeholder rather than an empty title.
+        val (title, _) = capturePersistedTitleAndSummary("-\n###\n*\n", "")
+
+        assertEquals("Untitled Recording", title)
+    }
+
+    @Test
     fun updateSummary_wellFormedJson_isNotAlteredByFallback() = runTest {
         val transcript = "short transcript"
         coEvery { llm.generate(any(), any<String>()) } returns jsonResponse

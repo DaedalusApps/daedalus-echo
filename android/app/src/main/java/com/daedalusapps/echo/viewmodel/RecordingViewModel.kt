@@ -101,7 +101,6 @@ class RecordingViewModel @JvmOverloads constructor(
     private val audioRecorder by lazy { audioRecorderProvider() }
     private var recordingTimerJob: Job? = null
     private var currentRecordingFile: File? = null
-    private var recordingStartMillis: Long = 0L
 
     /** Max duration cap for the recording in progress, in seconds; null means unlimited. */
     private var maxDurationCapSeconds: Long? = null
@@ -189,7 +188,6 @@ class RecordingViewModel @JvmOverloads constructor(
         currentRecordingFile = file
 
         _recordingDurationSeconds.value = 0L
-        recordingStartMillis = System.currentTimeMillis()
         maxDurationCapSeconds = readMaxDurationCapSeconds()
 
         try {
@@ -262,7 +260,11 @@ class RecordingViewModel @JvmOverloads constructor(
 
         val file = currentRecordingFile ?: return
         if (file.exists() && file.length() > 0) {
-            val duration = System.currentTimeMillis() - recordingStartMillis
+            // Use the elapsed-seconds timer (which already excludes paused time) as the
+            // source of truth, not wall-clock time — a paused-then-resumed recording would
+            // otherwise report a duration longer than its actual audio. Second-granularity
+            // is the timer's native precision, which is fine here.
+            val duration = _recordingDurationSeconds.value * 1000L
             val name = file.name
             viewModelScope.launch {
                 val recording = Recording(

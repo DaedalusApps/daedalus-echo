@@ -4,12 +4,15 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
+import com.daedalusapps.echo.ai.AI_TEXT_BUDGET_DEFAULT
 import com.daedalusapps.echo.ai.AI_TEXT_BUDGET_KEY
 import com.daedalusapps.echo.ai.normalizeTodoText
 import com.daedalusapps.echo.data.RecordingRepository
 import com.daedalusapps.echo.data.db.AppDatabase
 import com.daedalusapps.echo.data.model.Recording
 import com.daedalusapps.echo.data.model.TodoItem
+import com.daedalusapps.echo.ui.screens.TODO_LOOKBACK_HOURS_DEFAULT
+import com.daedalusapps.echo.viewmodel.MAX_RECORDING_MINUTES_DEFAULT
 import com.daedalusapps.echo.viewmodel.MAX_RECORDING_MINUTES_KEY
 import kotlinx.coroutines.flow.first
 import org.json.JSONArray
@@ -82,12 +85,19 @@ class BackupManager(
             put("todos", todosArr)
 
             val settings = JSONObject()
-            val allPrefs = prefs.all
-            SETTINGS_KEYS.forEach { key ->
-                if (allPrefs.containsKey(key)) {
-                    settings.put(key, allPrefs[key])
-                }
+            settings.put("use_bluetooth_mic", prefs.getBoolean("use_bluetooth_mic", false))
+            settings.put("auto_process", prefs.getBoolean("auto_process", true))
+            // custom_prompt stays present-only: its absence means "use the built-in
+            // DEFAULT_PROMPT", so exporting a default text would turn an unset state
+            // into an explicit custom prompt on restore.
+            if (prefs.contains("custom_prompt")) {
+                settings.put("custom_prompt", prefs.getString("custom_prompt", null))
             }
+            settings.put("todo_lookback_hours", prefs.getLong("todo_lookback_hours", TODO_LOOKBACK_HOURS_DEFAULT))
+            settings.put(BackupPrefs.INTERVAL_HOURS, prefs.getLong(BackupPrefs.INTERVAL_HOURS, BackupPrefs.DEFAULT_INTERVAL_HOURS))
+            settings.put(BackupPrefs.MAX_COUNT, prefs.getInt(BackupPrefs.MAX_COUNT, BackupPrefs.DEFAULT_MAX_COUNT))
+            settings.put(MAX_RECORDING_MINUTES_KEY, prefs.getInt(MAX_RECORDING_MINUTES_KEY, MAX_RECORDING_MINUTES_DEFAULT))
+            settings.put(AI_TEXT_BUDGET_KEY, prefs.getInt(AI_TEXT_BUDGET_KEY, AI_TEXT_BUDGET_DEFAULT))
             put("settings", settings)
         }
     }
@@ -313,17 +323,6 @@ class BackupManager(
 
     companion object {
         private val BACKUP_FILENAME_REGEX = Regex("daedalus_backup_.*\\.json")
-
-        private val SETTINGS_KEYS = listOf(
-            "use_bluetooth_mic",
-            "auto_process",
-            "custom_prompt",
-            "todo_lookback_hours",
-            BackupPrefs.INTERVAL_HOURS,
-            BackupPrefs.MAX_COUNT,
-            MAX_RECORDING_MINUTES_KEY,
-            AI_TEXT_BUDGET_KEY
-        )
 
         /**
          * Given all filenames in the backup folder, returns the names of backups that

@@ -233,13 +233,13 @@ class RecordingViewModelMaxDurationTest {
         coEvery { repo.save(capture(savedSlot)) } returns Unit
 
         viewModel.startLocalRecording()
-        advanceTimeBy(60_000L) // 60s recorded
+        advanceTimeBy(60_000L + 500) // 60s recorded
         viewModel.pauseLocalRecording()
 
         advanceTimeBy(5 * 60_000L) // 5 minutes paused — must not count
 
         viewModel.resumeLocalRecording()
-        advanceTimeBy(30_000L) // 30s more recorded
+        advanceTimeBy(30_000L + 500) // 30s more recorded
 
         viewModel.stopLocalRecording()
         advanceUntilIdle()
@@ -254,7 +254,7 @@ class RecordingViewModelMaxDurationTest {
         coEvery { repo.save(capture(savedSlot)) } returns Unit
 
         viewModel.startLocalRecording()
-        advanceTimeBy(45_000L)
+        advanceTimeBy(45_000L + 500)
 
         viewModel.stopLocalRecording()
         advanceUntilIdle()

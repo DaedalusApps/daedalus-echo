@@ -2,7 +2,10 @@ package com.daedalusapps.echo.ai
 
 import android.content.Context
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -47,6 +50,11 @@ class LocalLlmService(private val context: Context) {
     private var inference: LlmInference? = null
     private val mutex = Mutex()
 
+    // Independent of any caller's coroutine (e.g. ConversationViewModel's generationJob), so
+    // cancelling a caller — stopGenerating() — cannot cancel work already running here. See
+    // generate()'s KDoc for why that matters.
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     val isReady: Boolean get() = inference != null
 
     suspend fun ensureLoaded() {
@@ -84,12 +92,27 @@ class LocalLlmService(private val context: Context) {
     suspend fun generate(systemPrompt: String, userText: String): String =
         generate(systemPrompt, listOf(ChatTurn(Role.USER, userText)))
 
-    suspend fun generate(systemPrompt: String, turns: List<ChatTurn>): String =
-        mutex.withLock {
-            withContext(Dispatchers.IO) {
+    /**
+     * Runs the actual native call in [serviceScope] rather than directly in the caller's
+     * coroutine. `generateResponseAsync`'s callback fires from native code whenever the
+     * underlying inference finishes — cancelling the coroutine awaiting it (e.g.
+     * ConversationViewModel.stopGenerating()) only abandons that wait; the native call keeps
+     * running to completion regardless (cancel-and-ignore-result, which is fine for a single
+     * abandoned reply). The hazard that guards against: if the [mutex] were released the moment
+     * the *caller* is cancelled, a subsequent `generate()` call could invoke
+     * `generateResponseAsync` again on the same [LlmInference] instance while the abandoned call
+     * is still in flight — calling it concurrently is not a supported usage pattern for this
+     * instance and could interleave or corrupt output. Running the critical section in
+     * [serviceScope] — a scope independent of the caller — means the [mutex] stays held until the
+     * abandoned call actually finishes or the 3-minute timeout elapses, so the next `generate()`
+     * call simply waits rather than racing it.
+     */
+    suspend fun generate(systemPrompt: String, turns: List<ChatTurn>): String {
+        val prompt = buildGemmaPrompt(systemPrompt, turns)
+        val deferred = serviceScope.async<String> {
+            mutex.withLock {
                 val llm = inference ?: error("Model not loaded — call ensureLoaded() first")
                 Log.d("DaedalusAI", "Generating response for ${turns.size} turn(s)...")
-                val prompt = buildGemmaPrompt(systemPrompt, turns)
                 try {
                     // generateResponse() crashes in MediaPipe 0.10.35 via nativePredictSync.
                     // generateResponseAsync uses a different native path that is stable.
@@ -113,6 +136,8 @@ class LocalLlmService(private val context: Context) {
                 }
             }
         }
+        return deferred.await()
+    }
 
     companion object {
         // The singleton is intentionally never closed: it lives for the process, and native

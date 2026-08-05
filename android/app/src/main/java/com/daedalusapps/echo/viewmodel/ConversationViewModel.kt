@@ -171,11 +171,23 @@ class ConversationViewModel @JvmOverloads constructor(
         // The listener may be invoked off the main thread (TextToSpeech's UtteranceProgressListener
         // callbacks are not guaranteed to arrive on it); MutableStateFlow.value is thread-safe, so
         // no dispatching back to the main thread is needed here.
-        service.setOnSpeakingChangedListener { speaking -> _isSpeaking.value = speaking }
+        service.setOnSpeakingChangedListener { speaking ->
+            _isSpeaking.value = speaking
+            // Speech ending for any reason (natural completion, another stop, an error) resets
+            // whichever bubble's replay icon was showing Stop — a replay is not exempt from this.
+            if (!speaking) _speakingMessageId.value = null
+        }
         // Same thread-safety note as above applies to the ready callback: it also fires
         // immediately with the current known state at registration, so a caller that checks after
         // init already finished still sees the right value instead of hanging on "not ready".
-        service.setOnReadyChangedListener { ready -> _ttsReady.value = ready }
+        service.setOnReadyChangedListener { ready ->
+            _ttsReady.value = ready
+            // A replay tapped while init was still running (see pendingReplayId) plays now that
+            // the engine can speak; a failed init drops it rather than leaving it armed forever.
+            val pending = pendingReplayId
+            pendingReplayId = null
+            if (ready && pending != null) startReplay(pending)
+        }
         service
     }
     private val tts by ttsDelegate
@@ -183,6 +195,13 @@ class ConversationViewModel @JvmOverloads constructor(
     // Whether TTS is actively speaking: drives a speaker/mute icon's active state.
     private val _isSpeaking = MutableStateFlow(false)
     val isSpeaking: StateFlow<Boolean> = _isSpeaking
+
+    // Id (stringified index into _messages) of the AGENT message currently being replayed via
+    // replayMessage() (#28 / ED.3), or null when no per-message replay is active. This is distinct
+    // from isSpeaking/auto-speak: the automatic reply-speak in performSend never sets this, since
+    // it is not a replay.
+    private val _speakingMessageId = MutableStateFlow<String?>(null)
+    val speakingMessageId: StateFlow<String?> = _speakingMessageId
 
     // Whether the (lazily built) speech engine has finished initializing. Three states, because
     // "still starting" and "the engine failed to start" must not look the same: null = not built
@@ -218,8 +237,54 @@ class ConversationViewModel @JvmOverloads constructor(
      * reply is ready would silently drop that reply.
      */
     fun stopSpeaking() {
+        // Cleared BEFORE stopping: the engine may report speaking=false synchronously from stop()
+        // (a flushed utterance may never deliver its completion callback), so clearing afterwards
+        // would race the speaking listener's own clear. Every deliberate speech-stopping action
+        // (send, startVoiceInput, endSession, startNewSession, muting, screen dispose) routes
+        // through here — an interrupted replay must not keep claiming to be the one speaking.
+        pendingReplayId = null
+        _speakingMessageId.value = null
         if (_ttsEnabled.value || ttsDelegate.isInitialized()) tts.stop()
     }
+
+    /**
+     * Replays a single AGENT message's text via the speech engine (#28 / ED.3) — an explicit
+     * per-bubble request, distinct from the automatic reply-speak in [performSend]. Unlike every
+     * other TTS entry point, this touches [tts] unconditionally, bypassing the `_ttsEnabled ||
+     * initialized` guard: replay must work even with spoken replies OFF, building the engine on
+     * demand without ever flipping the [ttsEnabled] preference. Any current speech (auto-speak or
+     * another replay) is stopped first, so only one utterance ever plays at a time.
+     *
+     * A freshly built engine is not usable yet — TextToSpeech initializes asynchronously and
+     * reports unavailable until it finishes — so the very first replay with spoken replies OFF
+     * would otherwise do nothing at all. Such a tap is remembered in [pendingReplayId] and played
+     * by the ready listener instead, rather than being silently dropped.
+     */
+    fun replayMessage(id: String) {
+        if (messageForId(id) == null) return
+        tts.stop()
+        if (tts.isAvailable) startReplay(id) else pendingReplayId = id
+    }
+
+    // A replay requested before the lazily built engine finished initializing. Volatile because it
+    // is written from the caller (main) thread and read from the ready callback, which — like the
+    // speaking callback — may arrive on another thread.
+    @Volatile
+    private var pendingReplayId: String? = null
+
+    /**
+     * Speaks the message [id] points at and marks it as the one replaying. May run on the ready
+     * callback's thread; the state it touches is thread-safe. The message is re-resolved here
+     * because a pending replay can outlive the list it referred to (e.g. a session rotation).
+     */
+    private fun startReplay(id: String) {
+        val message = messageForId(id) ?: return
+        _speakingMessageId.value = id
+        tts.speak(message.text)
+    }
+
+    private fun messageForId(id: String): ChatMessage? =
+        id.toIntOrNull()?.let { _messages.value.getOrNull(it) }
 
     fun setTtsEnabled(enabled: Boolean) {
         _ttsEnabled.value = enabled
@@ -571,7 +636,12 @@ class ConversationViewModel @JvmOverloads constructor(
             val modelMessage = ChatMessage(Role.MODEL, reply, clock())
             _messages.value = _messages.value + modelMessage
             appendToFile(modelMessage)
-            if (_ttsEnabled.value && tts.isAvailable) tts.speak(reply)
+            if (_ttsEnabled.value && tts.isAvailable) {
+                // The arriving reply takes the engine over from a replay tapped mid-generation,
+                // whose bubble would otherwise keep showing Stop for speech that is no longer its.
+                _speakingMessageId.value = null
+                tts.speak(reply)
+            }
         } catch (e: TimeoutCancellationException) {
             // generate()'s 3-minute timeout surfaces as a CancellationException subtype, but it is
             // a real failure rather than a stopGenerating() cancellation — must be caught before

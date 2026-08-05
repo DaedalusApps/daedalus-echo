@@ -1725,4 +1725,226 @@ class ConversationViewModelTest {
         val reloaded = newViewModel()
         assertTrue(reloaded.instantSend.value)
     }
+
+    // ---- Per-message replay (#28 / ED.3), ported from notetaker P9.2/P9.4 ----
+
+    // (ED.3-a) replayMessage(id) speaks that message's exact text via the engine and sets
+    //     speakingMessageId to the replayed message's id.
+    @Test
+    fun replayMessage_speaksMessageTextAndSetsSpeakingMessageId() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Here's a reply"
+        val vm = newViewModel()
+        vm.send("Hello")
+        advanceUntilIdle()
+
+        val id = vm.messages.value.indexOfLast { it.role == Role.MODEL }.toString()
+        vm.replayMessage(id)
+
+        verify(exactly = 1) { tts.speak("Here's a reply") }
+        assertEquals(id, vm.speakingMessageId.value)
+    }
+
+    // (ED.3-b) Replaying message B while message A is replaying stops the current utterance first
+    //     and switches speakingMessageId to B — only one utterance plays at a time.
+    @Test
+    fun replayMessage_whileAnotherReplaying_stopsFirstAndSwitchesSpeakingMessageId() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returnsMany listOf("Reply A", "Reply B")
+        val vm = newViewModel()
+        vm.send("First"); advanceUntilIdle()
+        vm.send("Second"); advanceUntilIdle()
+
+        val modelIndices = vm.messages.value.withIndex().filter { it.value.role == Role.MODEL }.map { it.index }
+        val idA = modelIndices[0].toString()
+        val idB = modelIndices[1].toString()
+
+        vm.replayMessage(idA)
+        assertEquals(idA, vm.speakingMessageId.value)
+
+        vm.replayMessage(idB)
+
+        verify(exactly = 2) { tts.stop() } // once per replayMessage call
+        assertEquals(idB, vm.speakingMessageId.value)
+        verify(exactly = 1) { tts.speak("Reply B") }
+    }
+
+    // (ED.3-c) When the wrapper reports speaking=false (utterance finished naturally, or any other
+    //     reason), speakingMessageId clears — a completed replay resets its icon.
+    @Test
+    fun replayMessage_wrapperReportsSpeakingFalse_clearsSpeakingMessageId() = runTest {
+        val listenerSlot = slot<(Boolean) -> Unit>()
+        every { tts.setOnSpeakingChangedListener(capture(listenerSlot)) } returns Unit
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.send("Hello"); advanceUntilIdle()
+        val id = vm.messages.value.indexOfLast { it.role == Role.MODEL }.toString()
+
+        vm.replayMessage(id)
+        assertEquals(id, vm.speakingMessageId.value)
+
+        listenerSlot.captured(false)
+
+        assertNull(vm.speakingMessageId.value)
+    }
+
+    // (ED.3-d) Replay works even with spoken replies OFF: it builds the engine on demand and
+    //     bypasses the ttsEnabled guard, but must never flip the ttsEnabled preference.
+    @Test
+    fun replayMessage_ttsDisabled_buildsEngineAndSpeaksWithoutChangingPref() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.send("Hello"); advanceUntilIdle()
+        val id = vm.messages.value.indexOfLast { it.role == Role.MODEL }.toString()
+        assertFalse(vm.ttsEnabled.value)
+
+        vm.replayMessage(id)
+
+        verify(exactly = 1) { tts.speak("Reply") }
+        assertEquals(1, ttsConstructions)
+        assertFalse("replay must not flip the ttsEnabled pref", vm.ttsEnabled.value)
+        assertFalse(prefs().getBoolean(CONVERSATION_TTS_ENABLED_KEY, false))
+    }
+
+    // (ED.3-e) Other speech-stopping actions (send, startVoiceInput) must stop an in-progress
+    //     replay and clear speakingMessageId — a replay is not exempt from the existing
+    //     "never talk over the user" guarantee.
+    @Test
+    fun send_duringReplay_stopsSpeechAndClearsSpeakingMessageId() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.send("Hello"); advanceUntilIdle()
+        val id = vm.messages.value.indexOfLast { it.role == Role.MODEL }.toString()
+        vm.replayMessage(id)
+        assertEquals(id, vm.speakingMessageId.value)
+
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Second reply"
+        vm.send("Another message")
+
+        assertNull(vm.speakingMessageId.value)
+        advanceUntilIdle()
+    }
+
+    // Echo's plain startVoiceInput() deliberately does not stop speech (that is the whole point
+    // of the separate startVoiceInputInterruptingSpeech() entry point — see its KDoc), so the
+    // "other speech-stopping actions" case ported from notetaker here is that method instead.
+    @Test
+    fun startVoiceInputInterruptingSpeech_duringReplay_stopsSpeechAndClearsSpeakingMessageId() = runTest {
+        markWhisperReady()
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.send("Hello"); advanceUntilIdle()
+        val id = vm.messages.value.indexOfLast { it.role == Role.MODEL }.toString()
+        vm.replayMessage(id)
+        assertEquals(id, vm.speakingMessageId.value)
+
+        vm.startVoiceInputInterruptingSpeech()
+
+        assertNull(vm.speakingMessageId.value)
+    }
+
+    // stopSpeaking() is the shared mechanism behind every other speech-stopping action
+    // (endSession, startNewSession, mute-tap, screen dispose) — clearing speakingMessageId there
+    // covers all of them without duplicating a test per caller.
+    @Test
+    fun stopSpeaking_clearsSpeakingMessageId() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.send("Hello"); advanceUntilIdle()
+        val id = vm.messages.value.indexOfLast { it.role == Role.MODEL }.toString()
+        vm.replayMessage(id)
+        assertEquals(id, vm.speakingMessageId.value)
+
+        vm.stopSpeaking()
+
+        assertNull(vm.speakingMessageId.value)
+    }
+
+    // (ED.3-f) The very first replay with spoken replies OFF builds the engine, which reports
+    //     unavailable while its async init runs: the tap must not silently do nothing — it plays
+    //     as soon as the engine reports ready.
+    @Test
+    fun replayMessage_engineStillInitializing_speaksOnceEngineBecomesReady() = runTest {
+        val readySlot = slot<(Boolean) -> Unit>()
+        every { tts.setOnReadyChangedListener(capture(readySlot)) } returns Unit
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.send("Hello"); advanceUntilIdle()
+        val id = vm.messages.value.indexOfLast { it.role == Role.MODEL }.toString()
+
+        every { tts.isAvailable } returns false
+        vm.replayMessage(id)
+
+        verify(exactly = 0) { tts.speak(any()) }
+        assertNull(vm.speakingMessageId.value)
+
+        every { tts.isAvailable } returns true
+        readySlot.captured(true)
+
+        verify(exactly = 1) { tts.speak("Reply") }
+        assertEquals(id, vm.speakingMessageId.value)
+    }
+
+    // (ED.3-g) A pending replay must be dropped, not played, when init fails outright.
+    @Test
+    fun replayMessage_engineInitFails_neverSpeaks() = runTest {
+        val readySlot = slot<(Boolean) -> Unit>()
+        every { tts.setOnReadyChangedListener(capture(readySlot)) } returns Unit
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.send("Hello"); advanceUntilIdle()
+        val id = vm.messages.value.indexOfLast { it.role == Role.MODEL }.toString()
+
+        every { tts.isAvailable } returns false
+        vm.replayMessage(id)
+        readySlot.captured(false)
+
+        verify(exactly = 0) { tts.speak(any()) }
+        assertNull(vm.speakingMessageId.value)
+    }
+
+    // (ED.3-h) Stopping (send, new session, mute, dispose…) between the tap and the engine
+    //     becoming ready cancels the pending replay — it must not start speaking afterwards.
+    @Test
+    fun stopSpeaking_beforeEngineReady_cancelsPendingReplay() = runTest {
+        val readySlot = slot<(Boolean) -> Unit>()
+        every { tts.setOnReadyChangedListener(capture(readySlot)) } returns Unit
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.send("Hello"); advanceUntilIdle()
+        val id = vm.messages.value.indexOfLast { it.role == Role.MODEL }.toString()
+
+        every { tts.isAvailable } returns false
+        vm.replayMessage(id)
+        vm.stopSpeaking()
+
+        every { tts.isAvailable } returns true
+        readySlot.captured(true)
+
+        verify(exactly = 0) { tts.speak(any()) }
+        assertNull(vm.speakingMessageId.value)
+    }
+
+    // (ED.3-i) A replay tapped while a reply is generating is taken over by that reply's
+    //     auto-speak; the replayed bubble must stop claiming to be the one speaking.
+    @Test
+    fun autoSpeak_afterReplayDuringGeneration_clearsSpeakingMessageId() = runTest {
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
+        val vm = newViewModel()
+        vm.setTtsEnabled(true)
+        vm.send("Hello"); advanceUntilIdle()
+        val id = vm.messages.value.indexOfLast { it.role == Role.MODEL }.toString()
+
+        val gate = CompletableDeferred<String>()
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } coAnswers { gate.await() }
+        vm.send("Another message")
+        testDispatcher.scheduler.runCurrent()
+
+        vm.replayMessage(id)
+        assertEquals(id, vm.speakingMessageId.value)
+
+        gate.complete("Second reply")
+        advanceUntilIdle()
+
+        verify(exactly = 1) { tts.speak("Second reply") }
+        assertNull(vm.speakingMessageId.value)
+    }
 }

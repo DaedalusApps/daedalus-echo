@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.2.4] - 2026-08-05
+
+### Fixed
+- When a note's AI analysis only partly succeeded, the note was saved with no preview text in the list. It now always gets a preview. (#67)
+- Those partly-analyzed notes were also invisible to Ask Library and to the AI during a conversation. They are now included. (#67)
+
 ## [1.2.3] - 2026-08-05
 
 ### Fixed

@@ -23,6 +23,40 @@ class SmartSummaryTest {
         assertEquals(filename, actual)
     }
 
+    // (#31 / ED.6) Conversation notes (as opposed to audio recordings) get a "Conversation" chip
+    // on the library card instead of a duration.
+    @Test
+    fun isConversationNote_conversationFilename_returnsTrue() {
+        assertTrue(DateUtils.isConversationNote("conv_20260804080519.md"))
+    }
+
+    @Test
+    fun isConversationNote_endedConversationFilename_returnsTrue() {
+        assertTrue(DateUtils.isConversationNote("conv_20260804080519.ended.md"))
+    }
+
+    @Test
+    fun isConversationNote_audioFilename_returnsFalse() {
+        assertFalse(DateUtils.isConversationNote("20260804080519.mp3"))
+    }
+
+    @Test
+    fun isConversationNote_arbitraryFilename_returnsFalse() {
+        assertFalse(DateUtils.isConversationNote("recording.m4a"))
+    }
+
+    @Test
+    fun isConversationNote_emptyFilename_returnsFalse() {
+        assertFalse(DateUtils.isConversationNote(""))
+    }
+
+    /** An audio file imported via syncFiles keeps its own name, which may start with "conv_". */
+    @Test
+    fun isConversationNote_importedAudioNamedLikeConversation_returnsFalse() {
+        assertFalse(DateUtils.isConversationNote("conv_meeting.mp3"))
+        assertFalse(DateUtils.isConversationNote("conv_20260804080519.mp3"))
+    }
+
     @Test
     fun smartAnalysisParser_validJson_returnsAnalysis() {
         val json = """

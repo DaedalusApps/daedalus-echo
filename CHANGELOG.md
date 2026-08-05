@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.2.2] - 2026-08-05
+
+### Fixed
+- A recording or conversation whose AI analysis couldn't be parsed is no longer saved as a blank, untitled note; it now gets a title and preview derived from its own text (#54).
+- Settings left at their default values are now included in backups, so restoring a backup carries over every setting's effective value (#55).
+- Conversation voice settings (spoken replies, speech speed, voice, instant send, auto-listen) are now included in backups and restored correctly, instead of being lost (#59).
+
 ## [1.2.1] - 2026-08-05
 
 ### Fixed

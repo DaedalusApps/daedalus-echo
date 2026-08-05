@@ -1823,8 +1823,11 @@ class ConversationViewModelTest {
         advanceUntilIdle()
     }
 
+    // Echo's plain startVoiceInput() deliberately does not stop speech (that is the whole point
+    // of the separate startVoiceInputInterruptingSpeech() entry point — see its KDoc), so the
+    // "other speech-stopping actions" case ported from notetaker here is that method instead.
     @Test
-    fun startVoiceInput_duringReplay_stopsSpeechAndClearsSpeakingMessageId() = runTest {
+    fun startVoiceInputInterruptingSpeech_duringReplay_stopsSpeechAndClearsSpeakingMessageId() = runTest {
         markWhisperReady()
         coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Reply"
         val vm = newViewModel()
@@ -1833,7 +1836,7 @@ class ConversationViewModelTest {
         vm.replayMessage(id)
         assertEquals(id, vm.speakingMessageId.value)
 
-        vm.startVoiceInput()
+        vm.startVoiceInputInterruptingSpeech()
 
         assertNull(vm.speakingMessageId.value)
     }

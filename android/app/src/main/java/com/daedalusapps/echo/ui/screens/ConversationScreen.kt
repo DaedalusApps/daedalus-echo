@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -79,7 +81,9 @@ import com.daedalusapps.echo.viewmodel.ConversationViewModel
  * Minimal text-chat surface for conversation mode (#20 / EB.3), plus an End session action that
  * saves and analyzes the transcript (#22 / EB.5), an inline Stop for the in-flight send/end,
  * push-to-talk voice input (#23 / EC.1), a spoken-replies toggle (#24 / EC.2), and an overflow
- * menu with speed and voice pickers (#25 / EC.3) plus an instant-send toggle (#26 / ED.1).
+ * menu with speed and voice pickers (#25 / EC.3) plus an instant-send toggle (#26 / ED.1). Also
+ * includes per-message replay (#28 / ED.3): each agent bubble embeds a small play/stop icon in its
+ * bottom-right corner (see [ChatBubble]).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,6 +99,7 @@ fun ConversationScreen(
     val voiceTranscript by conversationViewModel.voiceTranscript.collectAsState()
     val ttsEnabled by conversationViewModel.ttsEnabled.collectAsState()
     val isSpeaking by conversationViewModel.isSpeaking.collectAsState()
+    val speakingMessageId by conversationViewModel.speakingMessageId.collectAsState()
     val instantSend by conversationViewModel.instantSend.collectAsState()
 
     val context = LocalContext.current
@@ -262,8 +267,14 @@ fun ConversationScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(vertical = 8.dp)
             ) {
-                items(messages) { message ->
-                    ChatBubble(message)
+                itemsIndexed(messages) { index, message ->
+                    val id = index.toString()
+                    ChatBubble(
+                        message = message,
+                        isReplaying = speakingMessageId == id,
+                        onReplayClick = { conversationViewModel.replayMessage(id) },
+                        onStopReplayClick = { conversationViewModel.stopSpeaking() }
+                    )
                 }
                 if (isGenerating) {
                     item { GeneratingIndicator() }
@@ -323,8 +334,24 @@ fun ConversationScreen(
     }
 }
 
+/**
+ * A single message bubble. AGENT messages (never USER ones) get a small "Read aloud" play icon
+ * embedded in the bottom-right corner of the bubble (#28 / ED.3): tapping it replays that
+ * message's text via [onReplayClick]; while this is the message currently replaying
+ * ([isReplaying]), the icon becomes Stop and tapping it calls [onStopReplayClick] instead.
+ *
+ * The icon button is placed with `.align(Alignment.End)` directly in the Card's own (Column-
+ * scoped) content, rather than inside a nested `fillMaxWidth()` Row — a `fillMaxWidth()` alignment
+ * container inside the bubble would stretch the bubble itself to the full available width instead
+ * of keeping its intrinsic size.
+ */
 @Composable
-private fun ChatBubble(message: ChatMessage) {
+private fun ChatBubble(
+    message: ChatMessage,
+    isReplaying: Boolean,
+    onReplayClick: () -> Unit,
+    onStopReplayClick: () -> Unit
+) {
     val isUser = message.role == Role.USER
     Box(modifier = Modifier.fillMaxWidth()) {
         Card(
@@ -344,6 +371,21 @@ private fun ChatBubble(message: ChatMessage) {
                     else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
             )
+            if (!isUser) {
+                IconButton(
+                    onClick = { if (isReplaying) onStopReplayClick() else onReplayClick() },
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .size(48.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isReplaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                        contentDescription = if (isReplaying) "Stop reading" else "Read aloud",
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }

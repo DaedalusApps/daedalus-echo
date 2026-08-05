@@ -1947,4 +1947,73 @@ class ConversationViewModelTest {
         verify(exactly = 1) { tts.speak("Second reply") }
         assertNull(vm.speakingMessageId.value)
     }
+
+    // (#29 / ED.4) voiceButtonState derives the single morphing center button's state for the
+    //     voice-only surface, with precedence RECORDING > TRANSCRIBING > GENERATING > IDLE.
+
+    @Test
+    fun voiceButtonState_idleWhenNothingActive() {
+        assertEquals(
+            VoiceButtonState.IDLE,
+            voiceButtonState(isRecordingVoice = false, isTranscribing = false, isGenerating = false)
+        )
+    }
+
+    @Test
+    fun voiceButtonState_recordingWhenRecordingOnly() {
+        assertEquals(
+            VoiceButtonState.RECORDING,
+            voiceButtonState(isRecordingVoice = true, isTranscribing = false, isGenerating = false)
+        )
+    }
+
+    @Test
+    fun voiceButtonState_transcribingWhenTranscribingOnly() {
+        assertEquals(
+            VoiceButtonState.TRANSCRIBING,
+            voiceButtonState(isRecordingVoice = false, isTranscribing = true, isGenerating = false)
+        )
+    }
+
+    @Test
+    fun voiceButtonState_generatingWhenGeneratingOnly() {
+        assertEquals(
+            VoiceButtonState.GENERATING,
+            voiceButtonState(isRecordingVoice = false, isTranscribing = false, isGenerating = true)
+        )
+    }
+
+    // Recording must win even if generation flips true mid-recording (mic-hostage lesson): the
+    // user must always be able to stop a recording they started.
+    @Test
+    fun voiceButtonState_recordingWinsOverGenerating() {
+        assertEquals(
+            VoiceButtonState.RECORDING,
+            voiceButtonState(isRecordingVoice = true, isTranscribing = false, isGenerating = true)
+        )
+    }
+
+    @Test
+    fun voiceButtonState_transcribingWinsOverGenerating() {
+        assertEquals(
+            VoiceButtonState.TRANSCRIBING,
+            voiceButtonState(isRecordingVoice = false, isTranscribing = true, isGenerating = true)
+        )
+    }
+
+    @Test
+    fun voiceButtonState_recordingWinsOverTranscribing() {
+        assertEquals(
+            VoiceButtonState.RECORDING,
+            voiceButtonState(isRecordingVoice = true, isTranscribing = true, isGenerating = false)
+        )
+    }
+
+    @Test
+    fun voiceButtonState_recordingWinsOverTranscribingAndGenerating() {
+        assertEquals(
+            VoiceButtonState.RECORDING,
+            voiceButtonState(isRecordingVoice = true, isTranscribing = true, isGenerating = true)
+        )
+    }
 }

@@ -41,6 +41,21 @@ import java.util.Locale
 /** A single chat turn in a conversation session. */
 data class ChatMessage(val role: Role, val text: String, val timestampMillis: Long)
 
+/** Visual/interaction state of the single morphing center button on the voice-only instant-send
+ *  surface (#29 / ED.4). */
+enum class VoiceButtonState { IDLE, RECORDING, TRANSCRIBING, GENERATING }
+
+/** Derives [VoiceButtonState] with precedence RECORDING > TRANSCRIBING > GENERATING > IDLE.
+ *  Recording wins even if [isGenerating] flips true mid-recording (e.g. via endSession) — the
+ *  user must always be able to stop a recording they started (mic-hostage lesson). */
+fun voiceButtonState(isRecordingVoice: Boolean, isTranscribing: Boolean, isGenerating: Boolean): VoiceButtonState =
+    when {
+        isRecordingVoice -> VoiceButtonState.RECORDING
+        isTranscribing -> VoiceButtonState.TRANSCRIBING
+        isGenerating -> VoiceButtonState.GENERATING
+        else -> VoiceButtonState.IDLE
+    }
+
 // `internal` (rather than `private`) so ai/OfflineGuardrailTest.kt can assert the guardrail
 // appears exactly once, mirroring the other prompt-guardrail tests there.
 internal const val IDEATION_SYSTEM_PROMPT = "You are a thoughtful ideation partner in a live " +

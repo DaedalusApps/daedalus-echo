@@ -846,7 +846,10 @@ class ConversationViewModel @JvmOverloads constructor(
             // but being conversational text they tend to outrank real recordings for
             // conversational queries, and the live session already carries its own history.
             val all = repo.allRecordings.first()
-                .filter { it.summary.isNotBlank() && !DateUtils.isConversationNote(it.filename) }
+                .filter {
+                    (it.summary.isNotBlank() || it.shortSummary.isNotBlank()) &&
+                        !DateUtils.isConversationNote(it.filename)
+                }
             val seeds = repo.semanticSearch(
                 queryEmbed,
                 all,

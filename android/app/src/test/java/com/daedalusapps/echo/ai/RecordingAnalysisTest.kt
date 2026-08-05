@@ -234,12 +234,12 @@ class RecordingAnalysisTest {
     @Test
     fun updateSummary_titleOnlyPartialParse_backfillsPreviewFromTranscript() = runTest {
         val transcript = "We discussed the quarterly roadmap and next steps for the team."
-        val partialJson = """
-            {"title": "Roadmap Sync", "shortSummary": "", "topics": [], "mindMap": "", "fullSummary": ""}
-        """.trimIndent()
-        coEvery { llm.generate(any(), any<String>()) } returns partialJson
+        // Markdown format (not JSON): tryParseMarkdown has no raw-text fallback for fullSummary,
+        // so a response truncated after the title line leaves fullSummary genuinely blank — this
+        // is the actual shape observed on the owner's device.
+        val titleOnlyMarkdown = "- title: Roadmap Sync"
 
-        val (title, shortSummary) = capturePersistedTitleAndSummary(partialJson, transcript)
+        val (title, shortSummary) = capturePersistedTitleAndSummary(titleOnlyMarkdown, transcript)
 
         assertEquals("Roadmap Sync", title)
         assertTrue("shortSummary should not be blank", shortSummary.isNotBlank())

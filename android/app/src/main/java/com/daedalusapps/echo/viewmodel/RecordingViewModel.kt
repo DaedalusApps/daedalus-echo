@@ -530,7 +530,8 @@ class RecordingViewModel @JvmOverloads constructor(
                     _aiError.value = "Could not embed question."
                     return@launch
                 }
-                val all = repo.allRecordings.first().filter { it.summary.isNotBlank() }
+                val all = repo.allRecordings.first()
+                    .filter { it.summary.isNotBlank() || it.shortSummary.isNotBlank() }
 
                 Log.d("DaedalusAI", "askLibrary: ${all.size} analyzed notes, embedding backfill starting")
                 val withEmbeddings = mutableListOf<Recording>()

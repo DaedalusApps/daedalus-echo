@@ -91,9 +91,12 @@ private fun isDegradedAnalysis(analysis: SmartAnalysis): Boolean =
 
 private fun deriveFallbackAnalysis(analysis: SmartAnalysis, transcript: String): SmartAnalysis {
     val source = analysis.fullSummary.ifBlank { transcript }
+    val title = deriveFallbackTitle(source)
     return analysis.copy(
-        title = deriveFallbackTitle(source),
-        shortSummary = deriveFallbackShortSummary(source)
+        title = title,
+        // Degenerate sources (empty, or nothing but punctuation) truncate away to nothing, which
+        // would leave the note without a preview again; the title is always non-blank.
+        shortSummary = deriveFallbackShortSummary(source).ifBlank { title }
     )
 }
 
@@ -116,7 +119,9 @@ private fun deriveFallbackShortSummary(source: String): String {
 
 private fun truncateAnalysisTextAtWordBoundary(text: String, maxLength: Int): String {
     if (text.length <= maxLength) return text
-    val cut = text.substring(0, maxLength)
+    // Don't cut between the two halves of a surrogate pair (emoji), which renders as a stray "?".
+    val end = if (Character.isHighSurrogate(text[maxLength - 1])) maxLength - 1 else maxLength
+    val cut = text.substring(0, end)
     val lastSpace = cut.lastIndexOf(' ')
     val trimmed = if (lastSpace > 0) cut.substring(0, lastSpace) else cut
     return trimmed.trimEnd('.', ',', ';', ':', '-', ' ')

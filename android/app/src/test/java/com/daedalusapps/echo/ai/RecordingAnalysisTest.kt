@@ -76,10 +76,12 @@ class RecordingAnalysisTest {
         - “Hotel Ballroom/Event Space” – “This can be more formal and can be customized easily”
     """.trimIndent()
 
-    @Test
-    fun updateSummary_degradedFreeFormResponse_derivesNonBlankTitleAndSummary() = runTest {
-        val transcript = "offsite planning discussion"
-        coEvery { llm.generate(any(), any<String>()) } returns degradedBulletFixture
+    /** Runs the pipeline over [raw] and returns the (title, shortSummary) actually persisted. */
+    private suspend fun capturePersistedTitleAndSummary(
+        raw: String,
+        transcript: String
+    ): Pair<String, String> {
+        coEvery { llm.generate(any(), any<String>()) } returns raw
 
         analyzeTranscript(context, llm, embedder, repo, "note.mp3", transcript)
 
@@ -95,29 +97,15 @@ class RecordingAnalysisTest {
                 topics = any()
             )
         }
-        assertTrue("title should not be blank", titleSlot.captured.isNotBlank())
-        assertTrue("shortSummary should not be blank", shortSummarySlot.captured.isNotBlank())
+        return titleSlot.captured to shortSummarySlot.captured
     }
 
     @Test
-    fun updateSummary_degradedFreeFormResponse_derivesSensibleTitle() = runTest {
-        val transcript = "offsite planning discussion"
-        coEvery { llm.generate(any(), any<String>()) } returns degradedBulletFixture
+    fun updateSummary_degradedFreeFormResponse_derivesSensibleTitleAndSummary() = runTest {
+        val (title, shortSummary) =
+            capturePersistedTitleAndSummary(degradedBulletFixture, "offsite planning discussion")
 
-        analyzeTranscript(context, llm, embedder, repo, "note.mp3", transcript)
-
-        val titleSlot = slot<String>()
-        coVerify(exactly = 1) {
-            repo.updateSummary(
-                filename = "note.mp3",
-                summary = any(),
-                mindMap = any(),
-                title = capture(titleSlot),
-                shortSummary = any(),
-                topics = any()
-            )
-        }
-        val title = titleSlot.captured
+        assertTrue("shortSummary should not be blank", shortSummary.isNotBlank())
         assertTrue("title should not be blank", title.isNotBlank())
         assertTrue("title should not start with '-'", !title.startsWith("-"))
         assertTrue(
@@ -127,6 +115,33 @@ class RecordingAnalysisTest {
         )
         assertTrue("title should be within the length cap", title.length <= 60)
         assertTrue("title should be a single line", !title.contains("\n"))
+    }
+
+    @Test
+    fun updateSummary_degradedResponseWithNoUsableText_stillHasTitleAndPreview() = runTest {
+        // Degenerate sources that truncate away to nothing must not leave a blank preview, which is
+        // the original bug. Empty response + empty transcript, and a punctuation-only response.
+        val (emptyTitle, emptySummary) = capturePersistedTitleAndSummary("", "")
+        assertTrue("title should not be blank", emptyTitle.isNotBlank())
+        assertTrue("shortSummary should not be blank", emptySummary.isNotBlank())
+
+        repo = mockk(relaxed = true)
+        val (punctTitle, punctSummary) = capturePersistedTitleAndSummary(".".repeat(300), "")
+        assertTrue("title should not be blank", punctTitle.isNotBlank())
+        assertTrue("shortSummary should not be blank", punctSummary.isNotBlank())
+    }
+
+    @Test
+    fun updateSummary_degradedResponseWithEmoji_doesNotSplitSurrogatePair() = runTest {
+        // 59 chars then emoji puts a surrogate pair across the 60-char title cap, and there is no
+        // space to fall back to; a naive substring would leave a stray half-character.
+        val (title, _) = capturePersistedTitleAndSummary("a".repeat(59) + "😀".repeat(10), "tx")
+
+        assertTrue("title should not be blank", title.isNotBlank())
+        assertTrue(
+            "title must not end with an unpaired surrogate",
+            !Character.isHighSurrogate(title.last())
+        )
     }
 
     @Test

@@ -40,7 +40,7 @@ suspend fun analyzeTranscript(
     }
     val cleanJson = stripCodeFences(rawResponse)
     val parsedAnalysis = SmartAnalysisParser.parse(cleanJson)
-    val analysis = if (isDegradedAnalysis(parsedAnalysis)) {
+    val degradedOrParsed = if (isDegradedAnalysis(parsedAnalysis)) {
         Log.w(
             "DaedalusAI",
             "Analysis parse degraded to blank fallback; deriving title/summary from raw response (rawLength=${rawResponse.length})"
@@ -48,6 +48,18 @@ suspend fun analyzeTranscript(
         deriveFallbackAnalysis(parsedAnalysis, transcript)
     } else {
         parsedAnalysis
+    }
+
+    // Independent of the degraded-fallback guard above: a partial parse (e.g. title present but
+    // shortSummary/mindMap/topics/fullSummary all blank) doesn't trigger that guard, yet still
+    // leaves the note with no list preview and excluded from search. Backfill only shortSummary —
+    // never title/topics/mindMap/summary — from fullSummary when available, else the transcript.
+    // No-op when shortSummary already has content (#67).
+    val analysis = if (degradedOrParsed.shortSummary.isBlank()) {
+        val source = degradedOrParsed.fullSummary.ifBlank { transcript }
+        degradedOrParsed.copy(shortSummary = deriveFallbackShortSummary(source))
+    } else {
+        degradedOrParsed
     }
 
     val fullSummaryFinal = if ("## Action Items" !in analysis.fullSummary) {

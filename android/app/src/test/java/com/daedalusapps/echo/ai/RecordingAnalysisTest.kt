@@ -200,10 +200,12 @@ class RecordingAnalysisTest {
     }
 
     @Test
-    fun updateSummary_partiallyParsedResponse_isLeftUntouched() = runTest {
+    fun updateSummary_partiallyParsedResponse_keepsParsedFieldsButBackfillsPreview() = runTest {
         val transcript = "short transcript"
         // Has a title but blank shortSummary/mindMap/topics: NOT all four fields are blank, so the
-        // degraded-fallback guard must not engage and must not overwrite the partially-parsed result.
+        // degraded-fallback guard must not engage and must not overwrite title/topics/mindMap. The
+        // preview (shortSummary) is still backfilled independently so the note has a list preview
+        // and is not silently excluded from search (#67).
         val partialJson = """
             {"title": "Partial Title", "shortSummary": "", "topics": [], "mindMap": "", "fullSummary": "Some full summary text."}
         """.trimIndent()
@@ -211,16 +213,54 @@ class RecordingAnalysisTest {
 
         analyzeTranscript(context, llm, embedder, repo, "note.mp3", transcript)
 
+        val shortSummarySlot = slot<String>()
         coVerify(exactly = 1) {
             repo.updateSummary(
                 filename = "note.mp3",
                 summary = "Some full summary text.",
                 mindMap = "",
                 title = "Partial Title",
-                shortSummary = "",
+                shortSummary = capture(shortSummarySlot),
                 topics = emptyList()
             )
         }
+        assertEquals("Some full summary text.", shortSummarySlot.captured)
+    }
+
+    // (#67) Real device shape: title present but shortSummary/mindMap/topics/fullSummary ALL blank
+    // (Gemma's markdown response truncated after the title line). The preview must still be
+    // derived — from the transcript, since fullSummary is blank too — while title stays as parsed
+    // and topics/mindMap stay empty rather than fabricated.
+    @Test
+    fun updateSummary_titleOnlyPartialParse_backfillsPreviewFromTranscript() = runTest {
+        val transcript = "We discussed the quarterly roadmap and next steps for the team."
+        // Markdown format (not JSON): tryParseMarkdown has no raw-text fallback for fullSummary,
+        // so a response truncated after the title line leaves fullSummary genuinely blank — this
+        // is the actual shape observed on the owner's device.
+        val titleOnlyMarkdown = "- title: Roadmap Sync"
+
+        val (title, shortSummary) = capturePersistedTitleAndSummary(titleOnlyMarkdown, transcript)
+
+        assertEquals("Roadmap Sync", title)
+        assertTrue("shortSummary should not be blank", shortSummary.isNotBlank())
+        assertTrue(
+            "shortSummary should be derived from the transcript",
+            shortSummary.startsWith("We discussed the quarterly roadmap")
+        )
+    }
+
+    // (#67) When fullSummary IS present but shortSummary is blank, the preview must be derived
+    // from fullSummary, not the (potentially unrelated-looking) transcript.
+    @Test
+    fun updateSummary_partialParseWithFullSummary_backfillsPreviewFromFullSummary() = runTest {
+        val transcript = "irrelevant raw transcript text that should not be used"
+        val partialJson = """
+            {"title": "Partial Title", "shortSummary": "", "topics": [], "mindMap": "", "fullSummary": "This is the full summary body."}
+        """.trimIndent()
+
+        val (_, shortSummary) = capturePersistedTitleAndSummary(partialJson, transcript)
+
+        assertEquals("This is the full summary body.", shortSummary)
     }
 
     @Test

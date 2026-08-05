@@ -18,6 +18,7 @@ import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -91,6 +92,54 @@ class RecordingViewModelTest {
         assertEquals(answer, viewModel.libraryAnswer.value)
         assertEquals(recordings, viewModel.librarySources.value)
         assertEquals(question, viewModel.libraryQuestion.value)
+    }
+
+    // (#67) A note with a backfilled preview but blank summary must still be a candidate for Ask
+    // Library, not silently excluded because summary alone is blank.
+    @Test
+    fun askLibraryQuestion_includesNoteWithShortSummaryButBlankSummary() = runTest {
+        val question = "What did we discuss?"
+        val previewOnlyNote = Recording(
+            "note1.mp3",
+            title = "Note 1",
+            summary = "",
+            shortSummary = "Short preview only"
+        )
+
+        every { embedder.isReady } returns true
+        coEvery { embedder.embed(any()) } returns floatArrayOf(0.1f, 0.2f)
+        every { repo.allRecordings } returns flowOf(listOf(previewOnlyNote))
+        val candidatesSlot = slot<List<Recording>>()
+        coEvery {
+            repo.semanticSearch(any(), capture(candidatesSlot), any(), any())
+        } returns listOf(previewOnlyNote)
+        coEvery { llm.generate(any(), any<String>()) } returns "answer"
+
+        viewModel.askLibraryQuestion(question)
+        advanceUntilIdle()
+
+        assertTrue(candidatesSlot.captured.any { it.filename == "note1.mp3" })
+    }
+
+    // (#67) A note with BOTH summary and shortSummary blank is genuinely unanalyzed and must stay
+    // excluded from Ask Library.
+    @Test
+    fun askLibraryQuestion_excludesNoteWithBothSummaryFieldsBlank() = runTest {
+        val question = "What did we discuss?"
+        val unanalyzedNote = Recording("note1.mp3", title = "Note 1", summary = "", shortSummary = "")
+
+        every { embedder.isReady } returns true
+        every { repo.allRecordings } returns flowOf(listOf(unanalyzedNote))
+        val candidatesSlot = slot<List<Recording>>()
+        coEvery {
+            repo.semanticSearch(any(), capture(candidatesSlot), any(), any())
+        } returns emptyList()
+        coEvery { embedder.embed(any()) } returns floatArrayOf(0.1f, 0.2f)
+
+        viewModel.askLibraryQuestion(question)
+        advanceUntilIdle()
+
+        assertTrue(candidatesSlot.captured.none { it.filename == "note1.mp3" })
     }
 
     @Test

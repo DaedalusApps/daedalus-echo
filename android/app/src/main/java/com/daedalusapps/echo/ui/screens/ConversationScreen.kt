@@ -85,6 +85,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.daedalusapps.echo.ai.Role
 import com.daedalusapps.echo.ai.VoiceInfo
 import com.daedalusapps.echo.viewmodel.ChatMessage
@@ -121,6 +124,7 @@ fun ConversationScreen(
     val isSpeaking by conversationViewModel.isSpeaking.collectAsState()
     val speakingMessageId by conversationViewModel.speakingMessageId.collectAsState()
     val instantSend by conversationViewModel.instantSend.collectAsState()
+    val autoListen by conversationViewModel.autoListen.collectAsState()
 
     val context = LocalContext.current
     var input by remember { mutableStateOf("") }
@@ -184,6 +188,24 @@ fun ConversationScreen(
         onDispose {
             conversationViewModel.cancelVoiceInput()
             conversationViewModel.stopSpeaking()
+        }
+    }
+
+    // Auto-listen (#30) only fires while this screen is actually on-screen: ON_RESUME/ON_PAUSE
+    // track that, and disposal (e.g. process death) leaves it not-visible rather than stuck true.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> conversationViewModel.setConversationVisible(true)
+                Lifecycle.Event.ON_PAUSE -> conversationViewModel.setConversationVisible(false)
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            conversationViewModel.setConversationVisible(false)
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
@@ -275,6 +297,16 @@ fun ConversationScreen(
                             onClick = {
                                 menuExpanded = false
                                 conversationViewModel.setInstantSend(!instantSend)
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Auto-listen") },
+                            trailingIcon = {
+                                Switch(checked = autoListen, onCheckedChange = null)
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                conversationViewModel.setAutoListen(!autoListen)
                             }
                         )
                     }

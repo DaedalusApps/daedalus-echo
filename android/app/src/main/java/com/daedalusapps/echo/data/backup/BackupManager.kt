@@ -12,6 +12,11 @@ import com.daedalusapps.echo.data.db.AppDatabase
 import com.daedalusapps.echo.data.model.Recording
 import com.daedalusapps.echo.data.model.TodoItem
 import com.daedalusapps.echo.ui.screens.TODO_LOOKBACK_HOURS_DEFAULT
+import com.daedalusapps.echo.viewmodel.CONVERSATION_AUTO_LISTEN_KEY
+import com.daedalusapps.echo.viewmodel.CONVERSATION_INSTANT_SEND_KEY
+import com.daedalusapps.echo.viewmodel.CONVERSATION_TTS_ENABLED_KEY
+import com.daedalusapps.echo.viewmodel.CONVERSATION_TTS_RATE_KEY
+import com.daedalusapps.echo.viewmodel.CONVERSATION_TTS_VOICE_KEY
 import com.daedalusapps.echo.viewmodel.MAX_RECORDING_MINUTES_DEFAULT
 import com.daedalusapps.echo.viewmodel.MAX_RECORDING_MINUTES_KEY
 import kotlinx.coroutines.flow.first
@@ -98,6 +103,16 @@ class BackupManager(
             settings.put(BackupPrefs.MAX_COUNT, prefs.getInt(BackupPrefs.MAX_COUNT, BackupPrefs.DEFAULT_MAX_COUNT))
             settings.put(MAX_RECORDING_MINUTES_KEY, prefs.getInt(MAX_RECORDING_MINUTES_KEY, MAX_RECORDING_MINUTES_DEFAULT))
             settings.put(AI_TEXT_BUDGET_KEY, prefs.getInt(AI_TEXT_BUDGET_KEY, AI_TEXT_BUDGET_DEFAULT))
+            settings.put(CONVERSATION_TTS_ENABLED_KEY, prefs.getBoolean(CONVERSATION_TTS_ENABLED_KEY, false))
+            settings.put(CONVERSATION_TTS_RATE_KEY, prefs.getFloat(CONVERSATION_TTS_RATE_KEY, 1.0f).toDouble())
+            // conversation_tts_voice stays present-only, like custom_prompt: its absence
+            // means "use the system default voice", so exporting a fabricated default
+            // would pin the user to a specific voice on restore.
+            if (prefs.contains(CONVERSATION_TTS_VOICE_KEY)) {
+                settings.put(CONVERSATION_TTS_VOICE_KEY, prefs.getString(CONVERSATION_TTS_VOICE_KEY, null))
+            }
+            settings.put(CONVERSATION_INSTANT_SEND_KEY, prefs.getBoolean(CONVERSATION_INSTANT_SEND_KEY, false))
+            settings.put(CONVERSATION_AUTO_LISTEN_KEY, prefs.getBoolean(CONVERSATION_AUTO_LISTEN_KEY, false))
             put("settings", settings)
         }
     }
@@ -317,6 +332,14 @@ class BackupManager(
         if (settings.has(BackupPrefs.MAX_COUNT)) editor.putInt(BackupPrefs.MAX_COUNT, settings.optInt(BackupPrefs.MAX_COUNT))
         if (settings.has(MAX_RECORDING_MINUTES_KEY)) editor.putInt(MAX_RECORDING_MINUTES_KEY, settings.optInt(MAX_RECORDING_MINUTES_KEY))
         if (settings.has(AI_TEXT_BUDGET_KEY)) editor.putInt(AI_TEXT_BUDGET_KEY, settings.optInt(AI_TEXT_BUDGET_KEY))
+        if (settings.has(CONVERSATION_TTS_ENABLED_KEY)) editor.putBoolean(CONVERSATION_TTS_ENABLED_KEY, settings.optBoolean(CONVERSATION_TTS_ENABLED_KEY))
+        // org.json may parse the rate as Integer or Double depending on the literal's shape
+        // (e.g. a bare `1` vs `1.75`); read it as Double via optDouble and convert explicitly
+        // so the stored pref type is always Float, never inferred from the JSON runtime type.
+        if (settings.has(CONVERSATION_TTS_RATE_KEY)) editor.putFloat(CONVERSATION_TTS_RATE_KEY, settings.optDouble(CONVERSATION_TTS_RATE_KEY).toFloat())
+        if (settings.has(CONVERSATION_TTS_VOICE_KEY)) editor.putString(CONVERSATION_TTS_VOICE_KEY, settings.optString(CONVERSATION_TTS_VOICE_KEY))
+        if (settings.has(CONVERSATION_INSTANT_SEND_KEY)) editor.putBoolean(CONVERSATION_INSTANT_SEND_KEY, settings.optBoolean(CONVERSATION_INSTANT_SEND_KEY))
+        if (settings.has(CONVERSATION_AUTO_LISTEN_KEY)) editor.putBoolean(CONVERSATION_AUTO_LISTEN_KEY, settings.optBoolean(CONVERSATION_AUTO_LISTEN_KEY))
 
         editor.apply()
     }

@@ -1585,4 +1585,144 @@ class ConversationViewModelTest {
         assertEquals(1.0f, vm.ttsRate.value)
         assertEquals("", vm.ttsVoiceId.value)
     }
+
+    // (#26 / ED.1) Instant send ON: a non-blank transcription is sent through the same pipeline
+    //     as send() directly — user+model messages appear, the file gets both turns — and
+    //     voiceTranscript stays null (the input field is never touched on this path).
+    @Test
+    fun voiceInput_instantSendOn_nonBlankTranscription_triggersSendPipeline() = runTest {
+        markWhisperReady()
+        every { audioRecorder.start(any(), any()) } returns Unit
+        coEvery { transcriptionService.transcribe(any()) } returns "let's ship it"
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Great idea!"
+        val vm = newViewModel()
+        vm.setInstantSend(true)
+
+        vm.startVoiceInput()
+        vm.stopVoiceInput()
+        advanceUntilIdle()
+
+        assertNull(vm.voiceTranscript.value)
+        val messages = vm.messages.value
+        assertEquals(2, messages.size)
+        assertEquals(Role.USER, messages[0].role)
+        assertEquals("let's ship it", messages[0].text)
+        assertEquals(Role.MODEL, messages[1].role)
+        assertEquals("Great idea!", messages[1].text)
+
+        val content = vm.sessionFile.readText()
+        assertTrue(content.contains("let's ship it"))
+        assertTrue(content.contains("Great idea!"))
+    }
+
+    // (#26 / ED.1) Instant send ON: transcription is finished once the send starts, so
+    //     isTranscribing must be released while the reply is still generating — otherwise the mic
+    //     button spins "transcribing" for the whole generation and the temp audio file lingers on
+    //     disk.
+    @Test
+    fun voiceInput_instantSendOn_clearsTranscribingWhileGenerating() = runTest {
+        markWhisperReady()
+        val gate = CompletableDeferred<String>()
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } coAnswers { gate.await() }
+        every { audioRecorder.start(any(), any()) } returns Unit
+        coEvery { transcriptionService.transcribe(any()) } returns "still thinking"
+        val vm = newViewModel()
+        vm.setInstantSend(true)
+
+        vm.startVoiceInput()
+        vm.stopVoiceInput()
+        advanceUntilIdle()
+
+        assertTrue(vm.isGenerating.value)
+        assertFalse(vm.isTranscribing.value)
+
+        gate.complete("done")
+        advanceUntilIdle()
+        assertFalse(vm.isGenerating.value)
+    }
+
+    // (#26 / ED.1) Instant send ON but the transcription is blank: unchanged "Didn't catch that"
+    //     error, nothing sent, regardless of the toggle.
+    @Test
+    fun voiceInput_instantSendOn_blankTranscription_setsErrorNoSend() = runTest {
+        markWhisperReady()
+        every { audioRecorder.start(any(), any()) } returns Unit
+        coEvery { transcriptionService.transcribe(any()) } returns "   "
+        val vm = newViewModel()
+        vm.setInstantSend(true)
+
+        vm.startVoiceInput()
+        vm.stopVoiceInput()
+        advanceUntilIdle()
+
+        assertEquals("Didn't catch that", vm.error.value)
+        assertNull(vm.voiceTranscript.value)
+        assertTrue(vm.messages.value.isEmpty())
+        coVerify(exactly = 0) { llm.generate(any(), any<List<ChatTurn>>()) }
+    }
+
+    // (#26 / ED.1) Instant send ON but a generation is already in flight (e.g. the user sent typed
+    //     text while the voice recording was still going): the send pipeline's guard must reject
+    //     the instant path so it never double-sends. The transcript must not be lost — it falls
+    //     back to voiceTranscript instead, same as instant send OFF, AND is surfaced through the
+    //     error/snackbar channel — otherwise the user's words vanish into invisible state with no
+    //     sign anything was dropped (instant send ON hides the input field voiceTranscript feeds).
+    @Test
+    fun voiceInput_instantSendOn_generationInProgress_fallsBackToVoiceTranscriptNoCrash() = runTest {
+        markWhisperReady()
+        val gate = CompletableDeferred<String>()
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } coAnswers { gate.await() }
+        every { audioRecorder.start(any(), any()) } returns Unit
+        coEvery { transcriptionService.transcribe(any()) } returns "fallback text"
+        val vm = newViewModel()
+        vm.setInstantSend(true)
+
+        vm.startVoiceInput()
+        vm.send("typed while recording")
+        testDispatcher.scheduler.runCurrent()
+        assertTrue(vm.isGenerating.value)
+
+        vm.stopVoiceInput()
+        advanceUntilIdle()
+
+        assertEquals("fallback text", vm.voiceTranscript.value)
+        assertTrue(vm.error.value!!.contains("fallback text"))
+        assertEquals(1, vm.messages.value.count { it.role == Role.USER })
+
+        gate.complete("ok")
+        advanceUntilIdle()
+        assertFalse(vm.isGenerating.value)
+    }
+
+    // (#26 / ED.1) Instant send OFF (the default): a non-blank transcription lands only in
+    //     voiceTranscript, exactly like before this feature existed — nothing is auto-sent.
+    @Test
+    fun voiceInput_instantSendOff_nonBlankTranscription_onlyPopulatesVoiceTranscript() = runTest {
+        markWhisperReady()
+        every { audioRecorder.start(any(), any()) } returns Unit
+        coEvery { transcriptionService.transcribe(any()) } returns "draft text"
+        val vm = newViewModel()
+
+        vm.startVoiceInput()
+        vm.stopVoiceInput()
+        advanceUntilIdle()
+
+        assertEquals("draft text", vm.voiceTranscript.value)
+        assertTrue(vm.messages.value.isEmpty())
+        coVerify(exactly = 0) { llm.generate(any(), any<List<ChatTurn>>()) }
+    }
+
+    // (#26 / ED.1) The toggle persists to SharedPreferences and is restored by a fresh ViewModel.
+    @Test
+    fun setInstantSend_persistsAndRestoredByNewViewModel() = runTest {
+        val vm = newViewModel()
+        assertFalse(vm.instantSend.value)
+
+        vm.setInstantSend(true)
+        assertTrue(vm.instantSend.value)
+        assertTrue(prefs().getBoolean(CONVERSATION_INSTANT_SEND_KEY, false))
+
+        val reloaded = newViewModel()
+        assertTrue(reloaded.instantSend.value)
+    }
 }

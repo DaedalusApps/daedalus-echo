@@ -2549,6 +2549,67 @@ class ConversationViewModelTest {
         assertTrue(candidatesSlot.captured.none { it.filename == "conv_20260801120000.md" })
     }
 
+    // (#67) A note with a backfilled preview but blank summary must still be a retrieval candidate
+    // (not silently excluded), while ended conversation notes stay excluded exactly as (#56) set up.
+    @Test
+    fun send_embedderReady_includesNoteWithShortSummaryButBlankSummaryAsCandidate() = runTest {
+        val conversationNote = Recording(
+            filename = "conv_20260801120000.md",
+            title = "Old chat",
+            summary = "some prior conversation",
+            embedding = floatArrayOf(1f, 1f)
+        )
+        val previewOnlyNote = Recording(
+            filename = "note1.m4a",
+            title = "Solar plans",
+            shortSummary = "Panels on the garage roof",
+            summary = "",
+            embedding = floatArrayOf(1f, 1f)
+        )
+        every { embedder.isReady } returns true
+        coEvery { embedder.embed(any()) } returns FloatArray(2) { 1f }
+        every { repo.allRecordings } returns flowOf(listOf(conversationNote, previewOnlyNote))
+        val candidatesSlot = slot<List<Recording>>()
+        every {
+            repo.semanticSearch(any(), capture(candidatesSlot), any(), any())
+        } returns listOf(previewOnlyNote)
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Here you go"
+        val vm = newViewModel()
+
+        vm.send("what were my solar plans?")
+        advanceUntilIdle()
+
+        assertTrue(candidatesSlot.captured.any { it.filename == "note1.m4a" })
+        assertTrue(candidatesSlot.captured.none { it.filename == "conv_20260801120000.md" })
+    }
+
+    // (#67) A note with BOTH summary and shortSummary blank is genuinely unanalyzed and must stay
+    // excluded from conversation note retrieval.
+    @Test
+    fun send_embedderReady_excludesNoteWithBothSummaryFieldsBlankFromCandidates() = runTest {
+        val unanalyzedNote = Recording(
+            filename = "note1.m4a",
+            title = "Solar plans",
+            shortSummary = "",
+            summary = "",
+            embedding = floatArrayOf(1f, 1f)
+        )
+        every { embedder.isReady } returns true
+        coEvery { embedder.embed(any()) } returns FloatArray(2) { 1f }
+        every { repo.allRecordings } returns flowOf(listOf(unanalyzedNote))
+        val candidatesSlot = slot<List<Recording>>()
+        every {
+            repo.semanticSearch(any(), capture(candidatesSlot), any(), any())
+        } returns emptyList()
+        coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Here you go"
+        val vm = newViewModel()
+
+        vm.send("what were my solar plans?")
+        advanceUntilIdle()
+
+        assertTrue(candidatesSlot.captured.none { it.filename == "note1.m4a" })
+    }
+
     // (#56) When the injected note context would push the sent payload over the context budget,
     //     the over-budget guard must drop the notes rather than send an over-budget payload:
     //     either the note title is absent, or the total sent chars stay within budget. History

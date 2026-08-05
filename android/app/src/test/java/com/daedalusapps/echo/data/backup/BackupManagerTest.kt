@@ -8,6 +8,9 @@ import com.daedalusapps.echo.data.db.AppDatabase
 import com.daedalusapps.echo.data.model.Recording
 import com.daedalusapps.echo.data.model.TodoItem
 import com.daedalusapps.echo.ai.AI_TEXT_BUDGET_KEY
+import com.daedalusapps.echo.ai.AI_TEXT_BUDGET_DEFAULT
+import com.daedalusapps.echo.ui.screens.TODO_LOOKBACK_HOURS_DEFAULT
+import com.daedalusapps.echo.viewmodel.MAX_RECORDING_MINUTES_DEFAULT
 import com.daedalusapps.echo.viewmodel.MAX_RECORDING_MINUTES_KEY
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -184,6 +187,67 @@ class BackupManagerTest {
         // "buy milk" already exists; re-importing must not duplicate.
         val todos = target.todoDao().getAllFlow().first()
         assertEquals(2, todos.size)
+        target.close()
+    }
+
+    @Test
+    fun buildBackupJson_freshInstall_exportsDocumentedDefaultsForAllSettingsKeys() = runBlocking {
+        // Fresh prefs (cleared in setUp): no key has ever been touched by the UI.
+        val db = newDb()
+        val json = BackupManager(context, db).buildBackupJson()
+        val settings = json.getJSONObject("settings")
+
+        assertEquals(false, settings.getBoolean("use_bluetooth_mic"))
+        assertEquals(true, settings.getBoolean("auto_process"))
+        assertEquals(TODO_LOOKBACK_HOURS_DEFAULT, settings.getLong("todo_lookback_hours"))
+        assertEquals(BackupPrefs.DEFAULT_INTERVAL_HOURS, settings.getLong(BackupPrefs.INTERVAL_HOURS))
+        assertEquals(BackupPrefs.DEFAULT_MAX_COUNT, settings.getInt(BackupPrefs.MAX_COUNT))
+        assertEquals(MAX_RECORDING_MINUTES_DEFAULT, settings.getInt(MAX_RECORDING_MINUTES_KEY))
+        assertEquals(AI_TEXT_BUDGET_DEFAULT, settings.getInt(AI_TEXT_BUDGET_KEY))
+        db.close()
+    }
+
+    @Test
+    fun buildBackupJson_customPrompt_absentWhenUnsetPresentWhenSet() = runBlocking {
+        val db = newDb()
+
+        val unsetJson = BackupManager(context, db).buildBackupJson()
+        assertFalse(unsetJson.getJSONObject("settings").has("custom_prompt"))
+
+        prefs().edit().putString("custom_prompt", "my custom prompt").commit()
+        val setJson = BackupManager(context, db).buildBackupJson()
+        assertEquals("my custom prompt", setJson.getJSONObject("settings").getString("custom_prompt"))
+        db.close()
+    }
+
+    @Test
+    fun v2ExportRoundTrip_freshDefaults_overwriteNonDefaultTargetValues() = runBlocking {
+        // Fresh prefs export: every documented default is exported even though never touched.
+        val source = newDb()
+        val json = BackupManager(context, source).buildBackupJson()
+        source.close()
+
+        // Target prefs hold non-default values for every settings key.
+        prefs().edit()
+            .putBoolean("use_bluetooth_mic", true)
+            .putBoolean("auto_process", false)
+            .putLong("todo_lookback_hours", 12L)
+            .putLong(BackupPrefs.INTERVAL_HOURS, 6L)
+            .putInt(BackupPrefs.MAX_COUNT, 3)
+            .putInt(MAX_RECORDING_MINUTES_KEY, 30)
+            .putInt(AI_TEXT_BUDGET_KEY, 5_000)
+            .commit()
+
+        val target = newDb()
+        BackupManager(context, target).importFromJson(json)
+
+        assertEquals(false, prefs().getBoolean("use_bluetooth_mic", true))
+        assertEquals(true, prefs().getBoolean("auto_process", false))
+        assertEquals(TODO_LOOKBACK_HOURS_DEFAULT, prefs().getLong("todo_lookback_hours", -1L))
+        assertEquals(BackupPrefs.DEFAULT_INTERVAL_HOURS, prefs().getLong(BackupPrefs.INTERVAL_HOURS, -1L))
+        assertEquals(BackupPrefs.DEFAULT_MAX_COUNT, prefs().getInt(BackupPrefs.MAX_COUNT, -1))
+        assertEquals(MAX_RECORDING_MINUTES_DEFAULT, prefs().getInt(MAX_RECORDING_MINUTES_KEY, -1))
+        assertEquals(AI_TEXT_BUDGET_DEFAULT, prefs().getInt(AI_TEXT_BUDGET_KEY, -1))
         target.close()
     }
 

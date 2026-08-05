@@ -10,6 +10,11 @@ import com.daedalusapps.echo.data.model.TodoItem
 import com.daedalusapps.echo.ai.AI_TEXT_BUDGET_KEY
 import com.daedalusapps.echo.ai.AI_TEXT_BUDGET_DEFAULT
 import com.daedalusapps.echo.ui.screens.TODO_LOOKBACK_HOURS_DEFAULT
+import com.daedalusapps.echo.viewmodel.CONVERSATION_AUTO_LISTEN_KEY
+import com.daedalusapps.echo.viewmodel.CONVERSATION_INSTANT_SEND_KEY
+import com.daedalusapps.echo.viewmodel.CONVERSATION_TTS_ENABLED_KEY
+import com.daedalusapps.echo.viewmodel.CONVERSATION_TTS_RATE_KEY
+import com.daedalusapps.echo.viewmodel.CONVERSATION_TTS_VOICE_KEY
 import com.daedalusapps.echo.viewmodel.MAX_RECORDING_MINUTES_DEFAULT
 import com.daedalusapps.echo.viewmodel.MAX_RECORDING_MINUTES_KEY
 import kotlinx.coroutines.flow.first
@@ -218,6 +223,87 @@ class BackupManagerTest {
         val setJson = BackupManager(context, db).buildBackupJson()
         assertEquals("my custom prompt", setJson.getJSONObject("settings").getString("custom_prompt"))
         db.close()
+    }
+
+    @Test
+    fun buildBackupJson_freshInstall_exportsConversationVoiceSettingDefaults() = runBlocking {
+        // Fresh prefs (cleared in setUp): the five conversation voice settings (#59) have
+        // never been touched by the UI.
+        val db = newDb()
+        val json = BackupManager(context, db).buildBackupJson()
+        val settings = json.getJSONObject("settings")
+
+        assertEquals(false, settings.getBoolean(CONVERSATION_TTS_ENABLED_KEY))
+        assertEquals(1.0, settings.getDouble(CONVERSATION_TTS_RATE_KEY), 0.0001)
+        assertEquals(false, settings.getBoolean(CONVERSATION_INSTANT_SEND_KEY))
+        assertEquals(false, settings.getBoolean(CONVERSATION_AUTO_LISTEN_KEY))
+        db.close()
+    }
+
+    @Test
+    fun buildBackupJson_conversationTtsVoice_absentWhenUnsetPresentWhenSet() = runBlocking {
+        val db = newDb()
+
+        val unsetJson = BackupManager(context, db).buildBackupJson()
+        assertFalse(unsetJson.getJSONObject("settings").has(CONVERSATION_TTS_VOICE_KEY))
+
+        prefs().edit().putString(CONVERSATION_TTS_VOICE_KEY, "voice-id-7").commit()
+        val setJson = BackupManager(context, db).buildBackupJson()
+        assertEquals("voice-id-7", setJson.getJSONObject("settings").getString(CONVERSATION_TTS_VOICE_KEY))
+        db.close()
+    }
+
+    @Test
+    fun v2ExportRoundTrip_conversationVoiceSettings_restoreExactlyOverNonDefaultTarget() = runBlocking {
+        val source = newDb()
+        prefs().edit()
+            .putBoolean(CONVERSATION_TTS_ENABLED_KEY, true)
+            .putFloat(CONVERSATION_TTS_RATE_KEY, 1.75f)
+            .putString(CONVERSATION_TTS_VOICE_KEY, "voice-id-3")
+            .putBoolean(CONVERSATION_INSTANT_SEND_KEY, true)
+            .putBoolean(CONVERSATION_AUTO_LISTEN_KEY, true)
+            .commit()
+
+        val json = BackupManager(context, source).buildBackupJson()
+        source.close()
+
+        // Target prefs hold different values for every conversation voice setting.
+        prefs().edit()
+            .putBoolean(CONVERSATION_TTS_ENABLED_KEY, false)
+            .putFloat(CONVERSATION_TTS_RATE_KEY, 0.5f)
+            .putString(CONVERSATION_TTS_VOICE_KEY, "voice-id-9")
+            .putBoolean(CONVERSATION_INSTANT_SEND_KEY, false)
+            .putBoolean(CONVERSATION_AUTO_LISTEN_KEY, false)
+            .commit()
+
+        val target = newDb()
+        BackupManager(context, target).importFromJson(json)
+
+        assertEquals(true, prefs().getBoolean(CONVERSATION_TTS_ENABLED_KEY, false))
+        assertEquals(1.75f, prefs().getFloat(CONVERSATION_TTS_RATE_KEY, -1f), 0.0001f)
+        assertEquals("voice-id-3", prefs().getString(CONVERSATION_TTS_VOICE_KEY, null))
+        assertEquals(true, prefs().getBoolean(CONVERSATION_INSTANT_SEND_KEY, false))
+        assertEquals(true, prefs().getBoolean(CONVERSATION_AUTO_LISTEN_KEY, false))
+        target.close()
+    }
+
+    @Test
+    fun settingsRestore_plainJsonIntForTtsRateKey_storedAsFloatNoClassCast() = runBlocking {
+        // org.json parses a bare `1` as Integer. If applySettings inferred the pref type
+        // from the JSON value, conversation_tts_rate (written/read as Float everywhere)
+        // would be stored as Int and a later getFloat() would throw ClassCastException.
+        val json = JSONObject().apply {
+            put("backupVersion", 2)
+            put("recordings", JSONArray())
+            put("settings", JSONObject().apply { put(CONVERSATION_TTS_RATE_KEY, 1) }) // plain int
+        }
+
+        val target = newDb()
+        BackupManager(context, target).importFromJson(json)
+
+        // Must not throw and must round-trip to 1.0f.
+        assertEquals(1.0f, prefs().getFloat(CONVERSATION_TTS_RATE_KEY, -1f), 0.0001f)
+        target.close()
     }
 
     @Test

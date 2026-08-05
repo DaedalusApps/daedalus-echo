@@ -41,6 +41,10 @@ import java.util.Locale
 /** A single chat turn in a conversation session. */
 data class ChatMessage(val role: Role, val text: String, val timestampMillis: Long)
 
+/** Whether "New conversation" should be enabled: there is something to rotate away from, and no generation in flight. */
+fun canStartNewSession(messages: List<ChatMessage>, isGenerating: Boolean): Boolean =
+    messages.isNotEmpty() && !isGenerating
+
 /** Visual/interaction state of the single morphing center button on the voice-only instant-send
  *  surface (#29 / ED.4). */
 enum class VoiceButtonState { IDLE, RECORDING, TRANSCRIBING, GENERATING }

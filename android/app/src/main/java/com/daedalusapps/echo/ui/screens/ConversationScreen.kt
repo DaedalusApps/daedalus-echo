@@ -81,6 +81,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -92,6 +93,7 @@ import com.daedalusapps.echo.ai.Role
 import com.daedalusapps.echo.ai.VoiceInfo
 import com.daedalusapps.echo.viewmodel.ChatMessage
 import com.daedalusapps.echo.viewmodel.ConversationViewModel
+import com.daedalusapps.echo.viewmodel.canStartNewSession
 import com.daedalusapps.echo.viewmodel.VoiceButtonState
 import com.daedalusapps.echo.viewmodel.voiceButtonState
 
@@ -132,6 +134,7 @@ fun ConversationScreen(
     val listState = rememberLazyListState()
     var showSpeedDialog by remember { mutableStateOf(false) }
     var showVoiceDialog by remember { mutableStateOf(false) }
+    var showNewConversationDialog by remember { mutableStateOf(false) }
 
     // Instant send ON routes through startVoiceInputInterruptingSpeech() instead of plain
     // startVoiceInput(): the voice-only surface's single center button must stop any playing
@@ -191,6 +194,16 @@ fun ConversationScreen(
         }
     }
 
+    // Keep the screen awake while a voice session is active (#31 / ED.6), so recording/
+    // transcribing/speaking/generating doesn't get cut short by the screen locking. Released on
+    // idle and on leaving the screen.
+    val voiceActive = isRecordingVoice || isTranscribing || isSpeaking || isGenerating
+    val view = LocalView.current
+    DisposableEffect(voiceActive) {
+        view.keepScreenOn = voiceActive
+        onDispose { view.keepScreenOn = false }
+    }
+
     // Auto-listen (#30) only fires while this screen is actually on-screen: ON_RESUME/ON_PAUSE
     // track that, and disposal (e.g. process death) leaves it not-visible rather than stuck true.
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -227,6 +240,20 @@ fun ConversationScreen(
         VoiceSheet(
             conversationViewModel = conversationViewModel,
             onDismiss = { showVoiceDialog = false }
+        )
+    }
+
+    if (showNewConversationDialog) {
+        NewConversationDialog(
+            onSaveAndStartNew = {
+                showNewConversationDialog = false
+                conversationViewModel.endSession()
+            },
+            onStartWithoutSaving = {
+                showNewConversationDialog = false
+                conversationViewModel.startNewSession()
+            },
+            onCancel = { showNewConversationDialog = false }
         )
     }
 
@@ -307,6 +334,14 @@ fun ConversationScreen(
                             onClick = {
                                 menuExpanded = false
                                 conversationViewModel.setAutoListen(!autoListen)
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("New conversation") },
+                            enabled = canStartNewSession(messages, isGenerating),
+                            onClick = {
+                                menuExpanded = false
+                                showNewConversationDialog = true
                             }
                         )
                     }
@@ -596,6 +631,40 @@ private fun ChatBubble(
             }
         }
     }
+}
+
+/**
+ * Warns before starting a new conversation (#31 / ED.6): only "End session" saves the current one
+ * as a note, so leaving it via "New conversation" without saving would otherwise silently discard
+ * it. Shown only when the menu item that triggers it is enabled, i.e. there are messages to lose.
+ */
+@Composable
+private fun NewConversationDialog(
+    onSaveAndStartNew: () -> Unit,
+    onStartWithoutSaving: () -> Unit,
+    onCancel: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Save this conversation?") },
+        text = {
+            Text(
+                "This conversation is not saved as a note automatically. Save it to your " +
+                    "library before starting a new one?"
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onSaveAndStartNew) { Text("Save") }
+        },
+        dismissButton = {
+            // Kept short deliberately: this Row cannot wrap, so long labels would push "Cancel"
+            // off the edge of a phone-width dialog. The title and body carry the full meaning.
+            Row {
+                TextButton(onClick = onStartWithoutSaving) { Text("Don't save") }
+                TextButton(onClick = onCancel) { Text("Cancel") }
+            }
+        }
+    )
 }
 
 private val SPEED_OPTIONS = listOf(0.75f to "0.75×", 1.0f to "1×", 1.25f to "1.25×", 1.5f to "1.5×", 2.0f to "2×")

@@ -2420,7 +2420,7 @@ class ConversationViewModelTest {
         every { embedder.isReady } returns true
         coEvery { embedder.embed(any()) } returns FloatArray(2) { 1f }
         every { repo.allRecordings } returns flowOf(listOf(note))
-        every { repo.semanticSearch(any(), any(), any()) } returns listOf(note)
+        every { repo.semanticSearch(any(), any(), any(), any()) } returns listOf(note)
         val systemPrompts = mutableListOf<String>()
         coEvery { llm.generate(capture(systemPrompts), any<List<ChatTurn>>()) } returns "Here you go"
         val vm = newViewModel()
@@ -2504,7 +2504,7 @@ class ConversationViewModelTest {
         every { embedder.isReady } returns true
         coEvery { embedder.embed(any()) } returns FloatArray(2) { 1f }
         every { repo.allRecordings } returns flowOf(listOf(note))
-        every { repo.semanticSearch(any(), any(), any()) } returns emptyList()
+        every { repo.semanticSearch(any(), any(), any(), any()) } returns emptyList()
         val systemPrompts = mutableListOf<String>()
         coEvery { llm.generate(capture(systemPrompts), any<List<ChatTurn>>()) } returns "Here you go"
         val vm = newViewModel()
@@ -2539,7 +2539,7 @@ class ConversationViewModelTest {
         coEvery { embedder.embed(any()) } returns FloatArray(2) { 1f }
         every { repo.allRecordings } returns flowOf(listOf(conversationNote, realNote))
         val candidatesSlot = slot<List<Recording>>()
-        every { repo.semanticSearch(any(), capture(candidatesSlot), any()) } returns listOf(realNote)
+        every { repo.semanticSearch(any(), capture(candidatesSlot), any(), any()) } returns listOf(realNote)
         coEvery { llm.generate(any(), any<List<ChatTurn>>()) } returns "Here you go"
         val vm = newViewModel()
 
@@ -2565,7 +2565,7 @@ class ConversationViewModelTest {
         every { embedder.isReady } returns true
         coEvery { embedder.embed(any()) } returns FloatArray(2) { 1f }
         every { repo.allRecordings } returns flowOf(listOf(note))
-        every { repo.semanticSearch(any(), any(), any()) } returns listOf(note)
+        every { repo.semanticSearch(any(), any(), any(), any()) } returns listOf(note)
         val systemPrompts = mutableListOf<String>()
         val turnsSlot = mutableListOf<List<ChatTurn>>()
         coEvery { llm.generate(capture(systemPrompts), capture(turnsSlot)) } returns "Here you go"

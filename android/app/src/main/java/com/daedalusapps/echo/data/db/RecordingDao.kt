@@ -16,12 +16,11 @@ interface RecordingDao {
     @Query("SELECT * FROM recordings WHERE filename = :filename")
     suspend fun get(filename: String): Recording?
 
-    @Query("""SELECT * FROM recordings WHERE
-    filename LIKE '%' || :q || '%' OR
-    transcript LIKE '%' || :q || '%' OR
-    summary LIKE '%' || :q || '%'
+    @Query("""SELECT recordings.* FROM recordings
+    JOIN recordings_fts ON recordings.rowid = recordings_fts.rowid
+    WHERE recordings_fts MATCH :ftsQuery
     ORDER BY createdAt DESC""")
-    fun searchFlow(q: String): Flow<List<Recording>>
+    fun searchFtsFlow(ftsQuery: String): Flow<List<Recording>>
 
     @Query("SELECT * FROM recordings WHERE createdAt >= :cutoff ORDER BY createdAt DESC")
     suspend fun getSince(cutoff: Long): List<Recording>

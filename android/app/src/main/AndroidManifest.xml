@@ -40,15 +40,8 @@
 
         <receiver
             android:name=".AdbReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.daedalusapps.echo.SYNC" />
-                <action android:name="com.daedalusapps.echo.PROBE" />
-                <action android:name="com.daedalusapps.echo.PROBE2" />
-                <action android:name="com.daedalusapps.echo.PROBE_DELETE" />
-                <action android:name="com.daedalusapps.echo.ANALYZE" />
-            </intent-filter>
-        </receiver>
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

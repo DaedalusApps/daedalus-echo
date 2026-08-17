@@ -20,6 +20,7 @@ import com.daedalusapps.echo.ai.buildNoteQuestionPrompt
 import com.daedalusapps.echo.ai.EmbeddingService
 import com.daedalusapps.echo.ai.LocalLlmService
 import com.daedalusapps.echo.ai.MarkdownExporter
+import com.daedalusapps.echo.ai.TranscriptFormatter
 import com.daedalusapps.echo.ai.TranscriptionService
 import com.daedalusapps.echo.ai.isWhisperReady
 import com.daedalusapps.echo.data.RecordingRepository
@@ -407,6 +408,22 @@ class RecordingViewModel @JvmOverloads constructor(
             AnalysisForegroundService.stop(getApplication())
         }
     }
+
+    /**
+     * Debug ADB support for com.daedalusapps.echo.FORMAT_PARAGRAPHS: runs [TranscriptFormatter] over
+     * the stored transcript for [filename] and returns the formatted result, or null if the
+     * recording or its transcript doesn't exist.
+     */
+    suspend fun formatParagraphsPreview(filename: String): String? {
+        val transcript = repo.get(filename)?.transcript?.takeIf { it.isNotBlank() } ?: return null
+        return TranscriptFormatter.formatParagraphs(transcript)
+    }
+
+    /**
+     * Debug ADB support for com.daedalusapps.echo.SEARCH_FTS: runs [query] through the same
+     * search path the library screen's search bar uses (repo.search) and returns the matching filenames.
+     */
+    suspend fun searchPreview(query: String): List<String> = repo.search(query).first().map { it.filename }
 
     fun clearExportIntent() { _exportIntent.value = null }
 

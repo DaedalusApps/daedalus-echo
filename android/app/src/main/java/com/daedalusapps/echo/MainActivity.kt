@@ -23,6 +23,7 @@ import com.daedalusapps.echo.data.backup.BackupPrefs
 import com.daedalusapps.echo.data.backup.BackupWorker
 import com.daedalusapps.echo.ui.NavGraph
 import com.daedalusapps.echo.ui.theme.DaedalusTheme
+import com.daedalusapps.echo.util.SafeFilename
 import com.daedalusapps.echo.viewmodel.ConversationViewModel
 import com.daedalusapps.echo.viewmodel.RecordingViewModel
 import com.daedalusapps.echo.viewmodel.TodoViewModel
@@ -35,11 +36,46 @@ class MainActivity : ComponentActivity() {
 
     private val adbReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == "com.daedalusapps.echo.ANALYZE") {
-                val filename = intent.getStringExtra("filename") ?: ""
-                Log.i("DaedalusADB", "Analyze triggered for '$filename'")
-                if (filename.isNotBlank()) {
-                    lifecycleScope.launch { recordingViewModel.analyze(filename) }
+            if (intent == null || !intent.getBooleanExtra("_forwarded", false)) return
+            when (intent.action) {
+                AdbActions.ANALYZE -> {
+                    val filename = intent.getStringExtra("filename") ?: ""
+                    Log.i("DaedalusADB", "Analyze triggered for '$filename'")
+                    if (filename.isNotBlank() && SafeFilename.isSafe(filename)) {
+                        lifecycleScope.launch { recordingViewModel.analyze(filename) }
+                    } else if (filename.isNotBlank()) {
+                        Log.i("DaedalusADB", "Rejected analyze for unsafe filename '$filename'")
+                    }
+                }
+                AdbActions.START_RECORDING -> {
+                    Log.i("DaedalusADB", "Start recording triggered")
+                    lifecycleScope.launch { recordingViewModel.startLocalRecording() }
+                }
+                AdbActions.STOP_RECORDING -> {
+                    Log.i("DaedalusADB", "Stop recording triggered")
+                    lifecycleScope.launch { recordingViewModel.stopLocalRecording() }
+                }
+                AdbActions.FORMAT_PARAGRAPHS -> {
+                    val filename = intent.getStringExtra("filename") ?: ""
+                    Log.i("DaedalusADB", "Format paragraphs triggered for '$filename'")
+                    if (filename.isNotBlank() && SafeFilename.isSafe(filename)) {
+                        lifecycleScope.launch {
+                            val formatted = recordingViewModel.formatParagraphsPreview(filename)
+                            Log.i("DaedalusADB", "Paragraph format result for '$filename': ${formatted ?: "no transcript"}")
+                        }
+                    } else if (filename.isNotBlank()) {
+                        Log.i("DaedalusADB", "Rejected format paragraphs for unsafe filename '$filename'")
+                    }
+                }
+                AdbActions.SEARCH_FTS -> {
+                    val query = intent.getStringExtra("query") ?: ""
+                    Log.i("DaedalusADB", "Search triggered for '$query'")
+                    if (query.isNotBlank()) {
+                        lifecycleScope.launch {
+                            val results = recordingViewModel.searchPreview(query)
+                            Log.i("DaedalusADB", "Search result for '$query': ${results.size} match(es) -> $results")
+                        }
+                    }
                 }
             }
         }
@@ -56,7 +92,7 @@ class MainActivity : ComponentActivity() {
 
         if (BuildConfig.DEBUG) {
             val filter = IntentFilter().apply {
-                addAction("com.daedalusapps.echo.ANALYZE")
+                AdbActions.REGISTERED.forEach { addAction(it) }
             }
             ContextCompat.registerReceiver(this, adbReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         }

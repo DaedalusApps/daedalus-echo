@@ -58,6 +58,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import android.content.Context
+import com.daedalusapps.echo.util.CalendarIntegration
 import com.daedalusapps.echo.data.model.TodoItem
 import com.daedalusapps.echo.ui.components.SwipeToDeleteCard
 import com.daedalusapps.echo.viewmodel.TodoViewModel
@@ -268,6 +269,18 @@ private fun TodoSwipeToDeleteCard(
                         .padding(start = 8.dp)
                         .clickable { showEditDialog = true }
                 )
+                val context = LocalContext.current
+                IconButton(
+                    onClick = {
+                        CalendarIntegration.addToCalendar(context, todo.text)
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Add to Calendar",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
     }

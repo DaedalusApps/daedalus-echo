@@ -23,6 +23,7 @@ import com.daedalusapps.echo.data.backup.BackupPrefs
 import com.daedalusapps.echo.data.backup.BackupWorker
 import com.daedalusapps.echo.ui.NavGraph
 import com.daedalusapps.echo.ui.theme.DaedalusTheme
+import com.daedalusapps.echo.util.CalendarIntegration
 import com.daedalusapps.echo.util.SafeFilename
 import com.daedalusapps.echo.viewmodel.ConversationViewModel
 import com.daedalusapps.echo.viewmodel.RecordingViewModel
@@ -76,6 +77,12 @@ class MainActivity : ComponentActivity() {
                             Log.i("DaedalusADB", "Search result for '$query': ${results.size} match(es) -> $results")
                         }
                     }
+                }
+                AdbActions.ADD_CALENDAR -> {
+                    val title = intent.getStringExtra("title") ?: "Action Item"
+                    val note = intent.getStringExtra("note") ?: ""
+                    Log.i("DaedalusADB", "Add to calendar triggered for '$title'")
+                    CalendarIntegration.addToCalendar(this@MainActivity, title, note)
                 }
             }
         }

@@ -38,13 +38,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -53,7 +50,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -63,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import com.daedalusapps.echo.data.model.AudioUtils
 import com.daedalusapps.echo.data.model.DateUtils
 import com.daedalusapps.echo.data.model.Recording
+import com.daedalusapps.echo.ui.components.SwipeToDeleteCard
 import com.daedalusapps.echo.viewmodel.RecordingViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -252,7 +249,6 @@ fun RecordingsScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RecordingSwipeToDeleteCard(
     recording: Recording,
@@ -263,7 +259,6 @@ private fun RecordingSwipeToDeleteCard(
     onDelete: () -> Unit,
     onEditSave: (title: String, shortSummary: String) -> Unit
 ) {
-    var showConfirm by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var editTitle by remember(recording.filename) { mutableStateOf(recording.title) }
     var editShortSummary by remember(recording.filename) { mutableStateOf(recording.shortSummary) }
@@ -302,51 +297,7 @@ private fun RecordingSwipeToDeleteCard(
         )
     }
 
-    val dismissState = rememberSwipeToDismissBoxState(
-        confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.EndToStart && !isSelectionMode) {
-                showConfirm = true
-            }
-            false
-        }
-    )
-
-    if (showConfirm) {
-        AlertDialog(
-            onDismissRequest = { showConfirm = false },
-            title = { Text("Delete recording?") },
-            text = { Text("This will permanently remove the recording and all its AI-generated analysis data.") },
-            confirmButton = {
-                Button(
-                    onClick = { showConfirm = false; onDelete() }
-                ) { Text("Delete") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showConfirm = false }) { Text("Cancel") }
-            }
-        )
-    }
-
-    SwipeToDismissBox(
-        state = dismissState,
-        enableDismissFromStartToEnd = false,
-        backgroundContent = {
-            if (!isSelectionMode) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 8.dp),
-                    contentAlignment = Alignment.CenterEnd
-                ) {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = "Delete",
-                        tint = Color.Red
-                    )
-                }
-            }
-        }
-    ) {
+    if (isSelectionMode) {
         RecordingItem(
             recording = recording,
             isSelected = isSelected,
@@ -355,6 +306,21 @@ private fun RecordingSwipeToDeleteCard(
             onLongClick = onLongClick,
             onEdit = { showEditDialog = true }
         )
+    } else {
+        SwipeToDeleteCard(
+            confirmTitle = "Delete recording?",
+            confirmText = "This will permanently remove the recording and all its AI-generated analysis data.",
+            onDelete = onDelete
+        ) {
+            RecordingItem(
+                recording = recording,
+                isSelected = isSelected,
+                isSelectionMode = isSelectionMode,
+                onPlay = onPlay,
+                onLongClick = onLongClick,
+                onEdit = { showEditDialog = true }
+            )
+        }
     }
 }
 

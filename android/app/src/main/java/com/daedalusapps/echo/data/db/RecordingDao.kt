@@ -2,9 +2,8 @@ package com.daedalusapps.echo.data.db
 
 import androidx.room.Dao
 import androidx.room.Delete
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Upsert
 import com.daedalusapps.echo.data.model.Recording
 import kotlinx.coroutines.flow.Flow
 
@@ -27,7 +26,7 @@ interface RecordingDao {
     @Query("SELECT * FROM recordings WHERE createdAt >= :cutoff ORDER BY createdAt DESC")
     suspend fun getSince(cutoff: Long): List<Recording>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsert(recording: Recording)
 
     @Query("UPDATE recordings SET title = :title, shortSummary = :shortSummary WHERE filename = :filename")

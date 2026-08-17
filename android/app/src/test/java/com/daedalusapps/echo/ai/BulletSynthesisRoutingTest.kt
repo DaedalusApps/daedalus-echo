@@ -77,8 +77,22 @@ class BulletSynthesisRoutingTest {
     }
 
     @Test
+    fun isTranscriptReadable_punctuatedWhisperLoopHallucination_returnsFalse() {
+        assertFalse(isTranscriptReadable("Thank you. Thank you, thank you! Thank you?"))
+    }
+
+    @Test
+    fun isTranscriptReadable_naturalSpeechWithRepeatedPhraseAndTail_returnsTrue() {
+        assertTrue(isTranscriptReadable("Thank you very much, thank you very much everyone for coming today."))
+        assertTrue(isTranscriptReadable("Thank you very much, thank you very much everyone"))
+        assertTrue(isTranscriptReadable("We need to go, we need to go now"))
+    }
+
+    @Test
     fun isTranscriptReadable_normalReadableSpeech_returnsTrue() {
         assertTrue(isTranscriptReadable("This is a normal recording with some readable speech."))
         assertTrue(isTranscriptReadable("Meeting starts today at three PM [laughter] to discuss the project roadmap."))
     }
 }
+
+

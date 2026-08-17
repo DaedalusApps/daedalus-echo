@@ -1,16 +1,27 @@
 package com.daedalusapps.echo.ai
 
+import android.app.Application
 import android.content.Context
-import android.content.Intent
+import androidx.test.core.app.ApplicationProvider
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.slot
-import io.mockk.verify
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 
+@RunWith(RobolectricTestRunner::class)
 class AnalysisForegroundServiceTest {
+
+    private lateinit var context: Context
+
+    @Before
+    fun setUp() {
+        context = ApplicationProvider.getApplicationContext()
+    }
 
     @Test
     fun constants_haveExpectedValues() {
@@ -24,16 +35,10 @@ class AnalysisForegroundServiceTest {
 
     @Test
     fun start_createsIntentWithStartActionAndExtras() {
-        val context = mockk<Context>(relaxed = true)
-        val intentSlot = slot<Intent>()
-        every { context.startService(capture(intentSlot)) } returns null
-
         AnalysisForegroundService.start(context, "meeting.m4a", "Transcribing audio…")
 
-        verify(atLeast = 1) {
-            context.startService(any())
-        }
-        val intent = intentSlot.captured
+        val shadowApp = shadowOf(ApplicationProvider.getApplicationContext<Application>())
+        val intent = shadowApp.nextStartedService
         assertNotNull(intent)
         assertEquals(AnalysisForegroundService.ACTION_START, intent.action)
         assertEquals("meeting.m4a", intent.getStringExtra(AnalysisForegroundService.EXTRA_FILENAME))
@@ -42,16 +47,10 @@ class AnalysisForegroundServiceTest {
 
     @Test
     fun stop_createsIntentWithStopAction() {
-        val context = mockk<Context>(relaxed = true)
-        val intentSlot = slot<Intent>()
-        every { context.startService(capture(intentSlot)) } returns null
-
         AnalysisForegroundService.stop(context)
 
-        verify(exactly = 1) {
-            context.startService(capture(intentSlot))
-        }
-        val intent = intentSlot.captured
+        val shadowApp = shadowOf(ApplicationProvider.getApplicationContext<Application>())
+        val intent = shadowApp.nextStartedService
         assertNotNull(intent)
         assertEquals(AnalysisForegroundService.ACTION_STOP, intent.action)
     }
@@ -60,6 +59,7 @@ class AnalysisForegroundServiceTest {
     fun startAndStop_handleExceptionsSafely() {
         val failingContext = mockk<Context>()
         every { failingContext.startService(any()) } throws RuntimeException("Service start failed")
+        every { failingContext.startForegroundService(any()) } throws RuntimeException("Service start failed")
 
         // Should not throw
         AnalysisForegroundService.start(failingContext, "test.mp3", "Status")

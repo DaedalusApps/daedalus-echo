@@ -13,6 +13,7 @@ import androidx.core.content.FileProvider
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.daedalusapps.echo.ai.AnalysisForegroundService
 import com.daedalusapps.echo.ai.analyzeTranscript
 import com.daedalusapps.echo.ai.buildLibraryQuestionPrompt
 import com.daedalusapps.echo.ai.buildNoteQuestionPrompt
@@ -361,6 +362,7 @@ class RecordingViewModel @JvmOverloads constructor(
     private suspend fun doAnalyze(filename: String) {
         _isProcessing.value = true
         _aiError.value = null
+        AnalysisForegroundService.start(getApplication(), filename, "Processing audio...")
         try {
             val note = repo.get(filename) ?: run {
                 _aiError.value = "Recording not found."
@@ -374,6 +376,7 @@ class RecordingViewModel @JvmOverloads constructor(
 
             // Step 1: Always re-transcribe to get fresh text
             _syncProgress.value = "Transcribing audio…"
+            AnalysisForegroundService.start(getApplication(), filename, "Transcribing audio…")
             Log.i("DaedalusAI", "Transcribing ${localFile.name}")
             val transcript = transcriber.transcribe(localFile)
             if (transcript.isBlank()) {
@@ -391,6 +394,7 @@ class RecordingViewModel @JvmOverloads constructor(
             // embedding generation — extracted to analyzeTranscript so this pipeline is shared.
             analyzeTranscript(getApplication(), llm, embedder, repo, filename, transcript) {
                 _syncProgress.value = it
+                AnalysisForegroundService.start(getApplication(), filename, it)
             }
 
             _currentNote.value = repo.get(filename)
@@ -400,6 +404,7 @@ class RecordingViewModel @JvmOverloads constructor(
         } finally {
             _isProcessing.value = false
             _syncProgress.value = null
+            AnalysisForegroundService.stop(getApplication())
         }
     }
 

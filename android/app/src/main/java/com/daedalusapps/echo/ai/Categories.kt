@@ -110,3 +110,36 @@ fun extractActionItems(transcript: String): List<String> {
         .distinctBy { it.lowercase().take(25) }
         .take(5)
 }
+
+fun isTranscriptReadable(transcript: String): Boolean {
+    val trimmed = transcript.trim()
+    if (trimmed.isEmpty()) return false
+
+    // Remove bracket descriptors like [laughter], (music)
+    val clean = trimmed.replace(Regex("\\[.*?\\]|\\(.*?\\)"), "").trim()
+    if (clean.isEmpty()) return false
+
+    val words = clean.split(Regex("\\s+")).filter { it.isNotBlank() }
+    if (words.size < 3) return false
+
+    // Check for Whisper loop hallucinations (repeating word sequences)
+    if (words.size >= 8) {
+        for (phraseLen in 1..4) {
+            val chunk = words.take(phraseLen).joinToString(" ")
+            var isRepeating = true
+            var index = 0
+            while (index < words.size) {
+                val nextChunk = words.drop(index).take(phraseLen).joinToString(" ")
+                if (!nextChunk.equals(chunk, ignoreCase = true) && nextChunk.isNotBlank() && nextChunk.split(" ").size == phraseLen) {
+                    isRepeating = false
+                    break
+                }
+                index += phraseLen
+            }
+            if (isRepeating) return false
+        }
+    }
+
+    return true
+}
+

@@ -9,6 +9,36 @@ private const val ANALYSIS_SUMMARY_MAX_LENGTH = 200
 private const val ANALYSIS_FALLBACK_TITLE = "Untitled Recording"
 
 /**
+ * Longest transcript handed straight to the JSON prompt. Beyond this, Gemma 3 1B stops
+ * following the "return JSON" instruction and echoes the transcript instead, and the parser
+ * falls back to slicing a title out of raw text.
+ *
+ * Measured on-device: 1,674 chars parsed cleanly; 3,935 and everything from 10,681 to 11,937
+ * degraded, 5 times out of 5. The same 11,688-char transcript summarized into bullets first
+ * then parsed cleanly — and faster, five short generations beating one long one. So anything
+ * above this goes through [CHUNK_SUMMARY_PROMPT] first and the JSON step only ever sees bullets.
+ */
+private const val DIRECT_ANALYSIS_MAX_CHARS = 2_000
+
+/**
+ * Ceiling on the budget used for the bullet stage, independent of the user's AI text budget.
+ *
+ * Bulletizing alone isn't enough: at the 12,000 default a 10,364-char transcript is one chunk,
+ * whose bullets came back 4,274 chars long and the JSON step degraded on them anyway. Chunking
+ * the same transcript at this budget produced ~700 chars of bullets per chunk (~2,100 total)
+ * and parsed cleanly. What matters is how much text the JSON step sees, and chunk size is the
+ * lever that controls it.
+ */
+private const val SUMMARY_CHUNK_BUDGET = 6_000
+
+/**
+ * True when the transcript must be summarized into bullets before the JSON step. The budget
+ * controls chunk *size*; this controls whether raw transcript is ever fed to the JSON prompt.
+ */
+internal fun needsBulletSynthesis(transcriptLength: Int, chunkCount: Int): Boolean =
+    chunkCount > 1 || transcriptLength > DIRECT_ANALYSIS_MAX_CHARS
+
+/**
  * Runs the Gemma summarize/mind-map analysis plus embedding generation against an already-known
  * transcript and saves the result via [repo]. Extracted from RecordingViewModel.doAnalyze so this
  * post-transcript pipeline is defined exactly once.
@@ -26,13 +56,20 @@ suspend fun analyzeTranscript(
     onProgress: ((String) -> Unit)? = null
 ) {
     llm.ensureLoaded()
-    val chunks = chunkTranscript(transcript, aiTextBudget(context))
-    val rawResponse = if (chunks.size == 1) {
+    val chunks = chunkTranscript(
+        transcript,
+        minOf(aiTextBudget(context), SUMMARY_CHUNK_BUDGET)
+    )
+    val rawResponse = if (!needsBulletSynthesis(transcript.length, chunks.size)) {
         onProgress?.invoke("Analyzing with Gemma…")
         llm.generate(activePrompt(context), chunks[0])
     } else {
+        // "Section" rather than "part": a split recording's parts are a different thing, and
+        // this progress text sits right under a part's own title.
         val chunkSummaries = chunks.mapIndexed { i, chunk ->
-            onProgress?.invoke("Analyzing part ${i + 1} of ${chunks.size}…")
+            onProgress?.invoke(
+                if (chunks.size == 1) "Summarizing…" else "Summarizing section ${i + 1} of ${chunks.size}…"
+            )
             llm.generate(CHUNK_SUMMARY_PROMPT, chunk)
         }
         onProgress?.invoke("Synthesizing results…")

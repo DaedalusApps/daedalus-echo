@@ -278,5 +278,38 @@ class RecordingViewModelTest {
             counting.dispatchCount > before
         )
     }
+
+    @Test
+    fun formatParagraphsPreview_returnsFormattedTranscriptWhenExists() = runTest {
+        val note = Recording("rec.mp3", transcript = "First sentence. Second sentence. Third sentence. Fourth sentence.")
+        coEvery { repo.get("rec.mp3") } returns note
+
+        val result = viewModel.formatParagraphsPreview("rec.mp3")
+
+        val expected = "First sentence. Second sentence. Third sentence.\n\nFourth sentence."
+        assertEquals(expected, result)
+    }
+
+    @Test
+    fun formatParagraphsPreview_returnsNullWhenNoteNotFoundOrBlankTranscript() = runTest {
+        coEvery { repo.get("missing.mp3") } returns null
+        coEvery { repo.get("blank.mp3") } returns Recording("blank.mp3", transcript = "")
+
+        assertNull(viewModel.formatParagraphsPreview("missing.mp3"))
+        assertNull(viewModel.formatParagraphsPreview("blank.mp3"))
+    }
+
+    @Test
+    fun searchPreview_returnsFilenamesFromRepoSearch() = runTest {
+        val results = listOf(
+            Recording("rec1.mp3", title = "Meeting"),
+            Recording("rec2.mp3", title = "Meeting 2")
+        )
+        every { repo.search("Meeting") } returns flowOf(results)
+
+        val filenames = viewModel.searchPreview("Meeting")
+
+        assertEquals(listOf("rec1.mp3", "rec2.mp3"), filenames)
+    }
 }
 

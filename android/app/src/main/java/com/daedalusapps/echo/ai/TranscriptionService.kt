@@ -72,13 +72,6 @@ class TranscriptionService(private val context: Context) {
     }
 
     private fun decodeToPcmFloat(file: File): FloatArray {
-        val (buffer, size) = decodeToPcm(file)
-        return FloatArray(size) { buffer[it] / 32768f }
-    }
-
-    // Returns the over-allocated backing buffer and the number of valid samples written.
-    // Callers must use the returned size, not buffer.size.
-    private fun decodeToPcm(file: File): Pair<ShortArray, Int> {
         val extractor = MediaExtractor()
         extractor.setDataSource(file.absolutePath)
 
@@ -103,21 +96,25 @@ class TranscriptionService(private val context: Context) {
         codec.configure(format, null, null, 0)
         codec.start()
 
-        // Use a primitive ShortArray buffer to avoid boxing (mutableListOf<Short> would allocate
-        // ~24 bytes per sample as boxed objects — ~115 MB for a 5-min recording vs ~9.6 MB here).
-        var pcmBuffer = ShortArray(TARGET_SAMPLE_RATE * 60) // initial capacity: 1 minute
+        // Write floats straight into a primitive buffer — a ShortArray staging copy plus the
+        // float conversion would double peak memory (both live at once for the whole file).
+        var pcmBuffer = FloatArray(TARGET_SAMPLE_RATE * 60) // initial capacity: 1 minute
         var pcmSize = 0
         val info = MediaCodec.BufferInfo()
-        var sawEos = false
+        var inputDone = false
+        var outputDone = false
 
-        while (!sawEos) {
-            val inputIdx = codec.dequeueInputBuffer(10_000)
+        // Loop until the codec reports END_OF_STREAM on its *output*, not merely when the last
+        // input was queued: MediaCodec runs several buffers deep, so stopping at input EOS
+        // discarded the final seconds of every decode.
+        while (!outputDone) {
+            val inputIdx = if (inputDone) -1 else codec.dequeueInputBuffer(10_000)
             if (inputIdx >= 0) {
                 val inputBuf = codec.getInputBuffer(inputIdx)!!
                 val sampleSize = extractor.readSampleData(inputBuf, 0)
                 if (sampleSize < 0) {
                     codec.queueInputBuffer(inputIdx, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-                    sawEos = true
+                    inputDone = true
                 } else {
                     codec.queueInputBuffer(inputIdx, 0, sampleSize, extractor.sampleTime, 0)
                     extractor.advance()
@@ -147,10 +144,16 @@ class TranscriptionService(private val context: Context) {
                 if (needed > pcmBuffer.size) {
                     pcmBuffer = pcmBuffer.copyOf(maxOf(needed, pcmBuffer.size * 2))
                 }
-                resampled.copyInto(pcmBuffer, pcmSize)
+                for (i in resampled.indices) {
+                    pcmBuffer[pcmSize + i] = resampled[i] / 32768f
+                }
                 pcmSize += resampled.size
 
                 codec.releaseOutputBuffer(outputIdx, false)
+                if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
+                    outputDone = true
+                    break
+                }
                 outputIdx = codec.dequeueOutputBuffer(info, 0)
             }
         }
@@ -158,10 +161,10 @@ class TranscriptionService(private val context: Context) {
         codec.stop()
         codec.release()
         extractor.release()
-        return Pair(pcmBuffer, pcmSize)
+        return if (pcmSize == pcmBuffer.size) pcmBuffer else pcmBuffer.copyOf(pcmSize)
     }
 
-    private fun resample(input: ShortArray, fromRate: Int, toRate: Int): ShortArray {
+    internal fun resample(input: ShortArray, fromRate: Int, toRate: Int): ShortArray {
         if (fromRate == toRate) return input
         val ratio = fromRate.toDouble() / toRate
         val outLen = (input.size / ratio).toInt()

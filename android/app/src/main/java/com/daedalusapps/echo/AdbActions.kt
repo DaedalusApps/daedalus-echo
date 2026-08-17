@@ -15,10 +15,11 @@ object AdbActions {
     const val STOP_RECORDING = "com.daedalusapps.echo.STOP_RECORDING"
     const val FORMAT_PARAGRAPHS = "com.daedalusapps.echo.FORMAT_PARAGRAPHS"
     const val SEARCH_FTS = "com.daedalusapps.echo.SEARCH_FTS"
+    const val ADD_CALENDAR = "com.daedalusapps.echo.ADD_CALENDAR"
 
     /** Every action the dynamic receiver's `when` block handles. */
     val HANDLED: List<String> = listOf(
-        ANALYZE, START_RECORDING, STOP_RECORDING, FORMAT_PARAGRAPHS, SEARCH_FTS
+        ANALYZE, START_RECORDING, STOP_RECORDING, FORMAT_PARAGRAPHS, SEARCH_FTS, ADD_CALENDAR
     )
 
     /**

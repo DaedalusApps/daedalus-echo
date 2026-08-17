@@ -45,6 +45,13 @@ class AdbActionRegistrationTest {
     }
 
     @Test
+    fun `AdbActions ADD_CALENDAR constant matches convention and is in HANDLED and REGISTERED`() {
+        assertEquals("com.daedalusapps.echo.ADD_CALENDAR", AdbActions.ADD_CALENDAR)
+        assertTrue(AdbActions.HANDLED.contains(AdbActions.ADD_CALENDAR))
+        assertTrue(AdbActions.REGISTERED.contains(AdbActions.ADD_CALENDAR))
+    }
+
+    @Test
     fun `every AdbActions HANDLED constant has a when branch in MainActivity`() {
         val missingBranches = AdbActions.HANDLED.filterNot { action ->
             receiverWhenBlock.contains("AdbActions.${constantNameOf(action)} ->")

@@ -10,6 +10,8 @@ import com.daedalusapps.echo.ai.TranscriptionService
 import com.daedalusapps.echo.data.model.Recording
 import com.daedalusapps.echo.viewmodel.RecordingViewModel
 import io.mockk.*
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -23,6 +25,33 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import androidx.arch.core.executor.testing.InstantTaskExecutorRule
+import java.io.File
+import kotlin.coroutines.CoroutineContext
+
+/**
+ * Wraps a real dispatcher and counts how many times coroutines are actually dispatched onto
+ * it. Used to pin dispatcher ROUTING deterministically (#76): if production code ignores the
+ * injected `ioDispatcher` and uses a raw `Dispatchers.IO` instead, this count stays at 0 no
+ * matter how long we wait — it does not depend on real-thread timing, so it can't be a flake
+ * in either direction.
+ *
+ * Delegates [Delay] to the wrapped dispatcher (always a [StandardTestDispatcher] in this file)
+ * so virtual time is preserved. Without this, a `delay()` call while this dispatcher is the
+ * interceptor would fall back to real wall-clock `DefaultDelay`, `advanceUntilIdle()` would
+ * return early, and the coroutine could outlive the test.
+ */
+@OptIn(kotlinx.coroutines.InternalCoroutinesApi::class)
+private class DispatchCountingDispatcher(
+    private val delegate: CoroutineDispatcher
+) : CoroutineDispatcher(), Delay by (delegate as Delay) {
+    var dispatchCount = 0
+        private set
+
+    override fun dispatch(context: CoroutineContext, block: Runnable) {
+        dispatchCount++
+        delegate.dispatch(context, block)
+    }
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class RecordingViewModelTest {
@@ -62,7 +91,8 @@ class RecordingViewModelTest {
             repo = repo,
             llm = llm,
             transcriber = transcriber,
-            embedder = embedder
+            embedder = embedder,
+            ioDispatcher = testDispatcher
         )
     }
 
@@ -166,4 +196,115 @@ class RecordingViewModelTest {
         advanceUntilIdle()
         coVerify(exactly = 1) { repo.updateTitleAndSummary("rec.mp3", "New Title", "New summary") }
     }
+
+    // ------------------------------------------------------------------
+    // #76 — dispatcher routing. A method that ignores the injected `ioDispatcher` and uses a
+    // raw `Dispatchers.IO` internally will dispatch its IO work onto the real IO thread pool
+    // instead of the StandardTestDispatcher, so advanceUntilIdle() cannot drain it and the
+    // coroutine can outlive the test. These tests pin ROUTING (did the work dispatch
+    // through the injected dispatcher at all?), which is deterministic, rather than timing.
+    // ------------------------------------------------------------------
+
+    @Test
+    fun init_healsMissingDurations_routesOnInjectedIoDispatcher() = runTest {
+        val counting = DispatchCountingDispatcher(testDispatcher)
+        val audio = File.createTempFile("route-heal", ".mp3").also { it.deleteOnExit() }
+        val needsHeal = Recording(filename = "needs-heal.mp3", localPath = audio.absolutePath, durationMillis = 0L)
+        every { repo.allRecordings } returns flowOf(listOf(needsHeal))
+
+        RecordingViewModel(
+            application = application, db = mockk(relaxed = true), repo = repo, llm = llm,
+            transcriber = mockk(relaxed = true), embedder = embedder, ioDispatcher = counting
+        )
+        advanceUntilIdle()
+
+        assertTrue(
+            "init's duration heal must route through the injected ioDispatcher, not a real Dispatchers.IO thread",
+            counting.dispatchCount > 0
+        )
+    }
+
+    @Test
+    fun syncFiles_processesUris_routesOnInjectedIoDispatcher() = runTest {
+        val counting = DispatchCountingDispatcher(testDispatcher)
+        val tempDir = java.nio.file.Files.createTempDirectory("syncfiles_test").toFile()
+        every { application.getExternalFilesDir(null) } returns tempDir
+
+        val vm = RecordingViewModel(
+            application = application, db = mockk(relaxed = true), repo = repo, llm = llm,
+            transcriber = mockk(relaxed = true), embedder = embedder, ioDispatcher = counting
+        )
+        advanceUntilIdle()
+        val before = counting.dispatchCount
+
+        vm.syncFiles(emptyList())
+        advanceUntilIdle()
+
+        tempDir.deleteRecursively()
+
+        assertTrue(
+            "syncFiles' copy loop must route through the injected ioDispatcher, not a real Dispatchers.IO thread",
+            counting.dispatchCount > before
+        )
+    }
+
+    @Test
+    fun exportMarkdown_writesFile_routesOnInjectedIoDispatcher() = runTest {
+        val counting = DispatchCountingDispatcher(testDispatcher)
+        val tempDir = java.nio.file.Files.createTempDirectory("export_test").toFile()
+        every { application.cacheDir } returns tempDir
+        val recording = Recording("test.mp3", title = "Test", summary = "Summary")
+        coEvery { repo.get("test.mp3") } returns recording
+
+        val vm = RecordingViewModel(
+            application = application, db = mockk(relaxed = true), repo = repo, llm = llm,
+            transcriber = mockk(relaxed = true), embedder = embedder, ioDispatcher = counting
+        )
+        advanceUntilIdle()
+        val before = counting.dispatchCount
+
+        vm.exportMarkdown("test.mp3")
+        advanceUntilIdle()
+
+        tempDir.deleteRecursively()
+
+        assertTrue(
+            "exportMarkdown must route through the injected ioDispatcher, not a real Dispatchers.IO thread",
+            counting.dispatchCount > before
+        )
+    }
+
+    @Test
+    fun exportLibraryAnswer_writesFile_routesOnInjectedIoDispatcher() = runTest {
+        val counting = DispatchCountingDispatcher(testDispatcher)
+        val tempDir = java.nio.file.Files.createTempDirectory("export_lib_test").toFile()
+        every { application.cacheDir } returns tempDir
+
+        val vm = RecordingViewModel(
+            application = application, db = mockk(relaxed = true), repo = repo, llm = llm,
+            transcriber = mockk(relaxed = true), embedder = embedder, ioDispatcher = counting
+        )
+        advanceUntilIdle()
+
+        every { embedder.isReady } returns true
+        coEvery { embedder.embed(any()) } returns floatArrayOf(0.1f, 0.2f)
+        val recordings = listOf(Recording("note1.mp3", summary = "Summary 1"))
+        every { repo.allRecordings } returns flowOf(recordings)
+        coEvery { repo.semanticSearch(any(), any(), any(), any()) } returns recordings
+        coEvery { llm.generate(any(), any<String>()) } returns "answer"
+        vm.askLibraryQuestion("question")
+        advanceUntilIdle()
+
+        val before = counting.dispatchCount
+        vm.exportLibraryAnswer()
+        advanceUntilIdle()
+
+        tempDir.deleteRecursively()
+
+        assertTrue(
+            "exportLibraryAnswer must route through the injected ioDispatcher, not a real Dispatchers.IO thread",
+            counting.dispatchCount > before
+        )
+    }
 }
+

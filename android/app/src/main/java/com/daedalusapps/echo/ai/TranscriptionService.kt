@@ -12,7 +12,6 @@ import com.k2fsa.sherpa.onnx.OfflineWhisperModelConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 private const val TAG = "Transcription"

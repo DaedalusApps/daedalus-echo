@@ -111,6 +111,18 @@ fun extractActionItems(transcript: String): List<String> {
         .take(5)
 }
 
+/**
+ * Checks whether a transcript contains readable, meaningful speech suitable for summarization.
+ *
+ * Filters out:
+ * - Empty or blank transcripts
+ * - Transcripts containing only non-speech descriptors (e.g. `[laughter]`, `(music)`)
+ * - Very short transcripts (< 3 words)
+ * - Whisper loop hallucinations where a 1 to 4 word phrase repeats across the entire transcript
+ *
+ * @param transcript The raw transcript text to validate.
+ * @return `true` if the transcript is readable and suitable for AI analysis; `false` otherwise.
+ */
 fun isTranscriptReadable(transcript: String): Boolean {
     val trimmed = transcript.trim()
     if (trimmed.isEmpty()) return false
@@ -122,19 +134,36 @@ fun isTranscriptReadable(transcript: String): Boolean {
     val words = clean.split(Regex("\\s+")).filter { it.isNotBlank() }
     if (words.size < 3) return false
 
+    // Normalize words for repetition checks (strip punctuation, lowercase)
+    val normalizedWords = words.map { word ->
+        word.filter { it.isLetterOrDigit() }.lowercase()
+    }.filter { it.isNotBlank() }
+
+    if (normalizedWords.size < 3) return false
+
     // Check for Whisper loop hallucinations (repeating word sequences)
-    if (words.size >= 8) {
+    if (normalizedWords.size >= 8) {
         for (phraseLen in 1..4) {
-            val chunk = words.take(phraseLen).joinToString(" ")
+            val chunk = normalizedWords.take(phraseLen)
             var isRepeating = true
             var index = 0
-            while (index < words.size) {
-                val nextChunk = words.drop(index).take(phraseLen).joinToString(" ")
-                if (!nextChunk.equals(chunk, ignoreCase = true) && nextChunk.isNotBlank() && nextChunk.split(" ").size == phraseLen) {
-                    isRepeating = false
-                    break
+            while (index < normalizedWords.size) {
+                val remaining = normalizedWords.size - index
+                if (remaining >= phraseLen) {
+                    val nextChunk = normalizedWords.subList(index, index + phraseLen)
+                    if (nextChunk != chunk) {
+                        isRepeating = false
+                        break
+                    }
+                    index += phraseLen
+                } else {
+                    val tailChunk = normalizedWords.subList(index, normalizedWords.size)
+                    if (tailChunk != chunk.subList(0, remaining)) {
+                        isRepeating = false
+                        break
+                    }
+                    index += remaining
                 }
-                index += phraseLen
             }
             if (isRepeating) return false
         }
@@ -142,4 +171,5 @@ fun isTranscriptReadable(transcript: String): Boolean {
 
     return true
 }
+
 

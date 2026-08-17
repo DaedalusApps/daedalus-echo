@@ -72,6 +72,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import java.io.File
 import kotlinx.coroutines.delay
+import com.daedalusapps.echo.ai.TranscriptFormatter
 import com.daedalusapps.echo.ui.mindmap.MindMapCanvas
 import com.daedalusapps.echo.viewmodel.RecordingViewModel
 
@@ -371,7 +372,7 @@ private fun TranscriptTab(transcript: String, query: String) {
                 .verticalScroll(rememberScrollState())
         ) {
             Text(
-                text = highlightMatches(transcript, query),
+                text = highlightMatches(TranscriptFormatter.formatParagraphs(transcript), query),
                 style = MaterialTheme.typography.bodyMedium
             )
         }
@@ -527,19 +528,52 @@ private fun formatDuration(millis: Long): String {
     return "%d:%02d".format(minutes, seconds)
 }
 
-private fun highlightMatches(text: String, query: String): AnnotatedString = buildAnnotatedString {
+internal fun highlightMatches(text: String, query: String): AnnotatedString = buildAnnotatedString {
     if (query.isBlank()) { append(text); return@buildAnnotatedString }
-    var start = 0
     val lower = text.lowercase()
     val q = query.lowercase()
+    var start = 0
     while (true) {
-        val idx = lower.indexOf(q, start)
-        if (idx < 0) { append(text.substring(start)); break }
-        append(text.substring(start, idx))
+        val match = findWhitespaceInsensitiveMatch(lower, q, start)
+        if (match == null) { append(text.substring(start)); break }
+        val (matchStart, matchEnd) = match
+        append(text.substring(start, matchStart))
         withStyle(SpanStyle(background = Color(0xFFFFFF00), color = Color.Black)) {
-            append(text.substring(idx, idx + q.length))
+            append(text.substring(matchStart, matchEnd))
         }
-        start = idx + q.length
+        start = matchEnd
     }
+}
+
+/**
+ * Finds the next occurrence of [query] in [text] starting at or after [from], treating any run
+ * of whitespace in [query] as matching any run of whitespace in [text]. This lets a query that
+ * spans a formatting-introduced line break (e.g. a paragraph break inserted between sentences)
+ * still highlight correctly, since search matches against the raw, unformatted transcript.
+ *
+ * Both [text] and [query] are expected to already be lowercased by the caller. Runs in O(n*m)
+ * worst case (n = text length, m = query length) via a plain two-pointer scan - no regex, so no
+ * catastrophic backtracking risk on long transcripts.
+ */
+internal fun findWhitespaceInsensitiveMatch(text: String, query: String, from: Int): Pair<Int, Int>? {
+    for (start in from..text.length) {
+        var ti = start
+        var qi = 0
+        var ok = true
+        while (qi < query.length) {
+            val qc = query[qi]
+            if (qc.isWhitespace()) {
+                if (ti >= text.length || !text[ti].isWhitespace()) { ok = false; break }
+                while (ti < text.length && text[ti].isWhitespace()) ti++
+                while (qi < query.length && query[qi].isWhitespace()) qi++
+            } else {
+                if (ti >= text.length || text[ti] != qc) { ok = false; break }
+                ti++
+                qi++
+            }
+        }
+        if (ok && qi == query.length) return start to ti
+    }
+    return null
 }
 

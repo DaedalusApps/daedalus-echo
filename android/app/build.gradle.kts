@@ -162,6 +162,7 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.room.testing)
     testImplementation(libs.androidx.test.core)
+    testImplementation(libs.compose.ui.test.junit4)
     testImplementation("org.json:json:20240303")
 
     androidTestImplementation(libs.androidx.test.ext)

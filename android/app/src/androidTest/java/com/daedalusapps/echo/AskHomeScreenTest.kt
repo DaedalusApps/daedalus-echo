@@ -33,6 +33,7 @@ class AskHomeScreenTest {
         every { recordingViewModel.aiError } returns MutableStateFlow(null)
         every { recordingViewModel.librarySources } returns MutableStateFlow(emptyList())
         every { recordingViewModel.exportIntent } returns MutableStateFlow(null)
+        every { recordingViewModel.autoStopNotice } returns MutableStateFlow(null)
         
         // Mock recording states
         every { recordingViewModel.isRecording } returns MutableStateFlow(false)

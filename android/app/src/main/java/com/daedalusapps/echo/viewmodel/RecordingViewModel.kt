@@ -28,6 +28,7 @@ import com.daedalusapps.echo.data.model.Recording
 import com.daedalusapps.echo.recording.AudioRecorder
 import com.daedalusapps.echo.ui.mindmap.GlobalGraph
 import com.daedalusapps.echo.ui.mindmap.GraphBuilder
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -62,8 +63,9 @@ class RecordingViewModel @JvmOverloads constructor(
     private val llm: LocalLlmService = LocalLlmService.getInstance(application),
     private val transcriber: TranscriptionService = TranscriptionService(application),
     private val embedder: EmbeddingService = EmbeddingService(application),
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val audioRecorderProvider: () -> AudioRecorder = { AudioRecorder(application) },
-    private val timerDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.Default
+    private val timerDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) : AndroidViewModel(application) {
 
     private val _syncProgress = MutableStateFlow<String?>(null)
@@ -154,7 +156,7 @@ class RecordingViewModel @JvmOverloads constructor(
         }
 
         // Heal missing durations for already synced/recorded files
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             repo.allRecordings.first().forEach { recording ->
                 if (recording.durationMillis == 0L && recording.localPath.isNotBlank()) {
                     val duration = AudioUtils.getDurationMillis(recording.localPath)
@@ -312,7 +314,7 @@ class RecordingViewModel @JvmOverloads constructor(
             val context = getApplication<Application>()
             val localDir = File(context.getExternalFilesDir(null), "Recordings").also { it.mkdirs() }
 
-            withContext(Dispatchers.IO) {
+            withContext(ioDispatcher) {
                 uris.forEach { uri ->
                     val docFile = DocumentFile.fromSingleUri(context, uri) ?: return@forEach
                     val name = docFile.name ?: "REC_${System.currentTimeMillis()}.m4a"
@@ -446,7 +448,7 @@ class RecordingViewModel @JvmOverloads constructor(
             val cacheDir = context.cacheDir
             val cleanName = filename.removeSuffix(".mp3").removeSuffix(".m4a")
             val outFile = File(cacheDir, "$cleanName.md")
-            withContext(Dispatchers.IO) { outFile.writeText(content) }
+            withContext(ioDispatcher) { outFile.writeText(content) }
 
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", outFile)
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
@@ -466,7 +468,7 @@ class RecordingViewModel @JvmOverloads constructor(
 
             val cacheDir = context.cacheDir
             val outFile = File(cacheDir, "ask-${System.currentTimeMillis()}.md")
-            withContext(Dispatchers.IO) { outFile.writeText(content) }
+            withContext(ioDispatcher) { outFile.writeText(content) }
 
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", outFile)
             val shareIntent = Intent(Intent.ACTION_SEND).apply {

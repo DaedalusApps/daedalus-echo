@@ -369,7 +369,18 @@ class RecordingAnalysisTest {
         analyzeTranscript(context, llm, embedder, repo, "note.mp3", transcript) { updates.add(it) }
 
         assertEquals("Synthesizing results…", updates.last())
-        assertEquals(updates.size - 1, updates.count { it.startsWith("Analyzing part ") })
-        assertEquals("Analyzing part 1 of ${updates.size - 1}…", updates.first())
+        assertEquals(updates.size - 1, updates.count { it.startsWith("Summarizing section ") })
+        assertEquals("Summarizing section 1 of ${updates.size - 1}…", updates.first())
+    }
+
+    @Test
+    fun singleChunkBulletSynthesis_reportsSummarizingThenSynthesisProgress() = runTest {
+        val transcript = "word ".repeat(600)
+        coEvery { llm.generate(any(), any<String>()) } returns jsonResponse
+        val updates = mutableListOf<String>()
+
+        analyzeTranscript(context, llm, embedder, repo, "note.mp3", transcript) { updates.add(it) }
+
+        assertEquals(listOf("Summarizing…", "Synthesizing results…"), updates)
     }
 }

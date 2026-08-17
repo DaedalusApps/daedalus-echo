@@ -1,7 +1,6 @@
 package com.daedalusapps.echo.util
 
 import android.app.Application
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo

@@ -4,12 +4,24 @@ import com.daedalusapps.echo.data.db.Converters
 import com.daedalusapps.echo.data.db.RecordingDao
 import com.daedalusapps.echo.data.model.Recording
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 class RecordingRepository(private val dao: RecordingDao) {
 
     val allRecordings: Flow<List<Recording>> = dao.getAllFlow()
 
-    fun search(query: String): Flow<List<Recording>> = dao.searchFlow(query)
+    fun search(query: String): Flow<List<Recording>> {
+        val ftsQuery = buildFtsMatchQuery(query) ?: return flowOf(emptyList())
+        return dao.searchFtsFlow(ftsQuery)
+    }
+
+    companion object {
+        internal fun buildFtsMatchQuery(query: String): String? {
+            val tokens = Regex("[\\p{L}\\p{N}]+").findAll(query).map { it.value }.toList()
+            if (tokens.isEmpty()) return null
+            return tokens.joinToString(" ") { "$it*" }
+        }
+    }
 
     suspend fun get(filename: String): Recording? = dao.get(filename)
 

@@ -9,9 +9,10 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.daedalusapps.echo.data.model.Recording
+import com.daedalusapps.echo.data.model.RecordingFts
 import com.daedalusapps.echo.data.model.TodoItem
 
-@Database(entities = [Recording::class, TodoItem::class], version = 7, exportSchema = true)
+@Database(entities = [Recording::class, TodoItem::class, RecordingFts::class], version = 8, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
@@ -46,6 +47,21 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        internal val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE VIRTUAL TABLE IF NOT EXISTS `recordings_fts` USING FTS4(`filename` TEXT NOT NULL, `transcript` TEXT NOT NULL, `summary` TEXT NOT NULL, content=`recordings`)"
+                )
+                db.execSQL("DROP TRIGGER IF EXISTS recordings_ai")
+                db.execSQL("DROP TRIGGER IF EXISTS recordings_ad")
+                db.execSQL("DROP TRIGGER IF EXISTS recordings_au")
+                db.execSQL(
+                    "INSERT INTO recordings_fts(docid, filename, transcript, summary) " +
+                        "SELECT rowid, filename, transcript, summary FROM recordings"
+                )
+            }
+        }
+
         @VisibleForTesting
         internal fun buildDatabase(context: Context, name: String): AppDatabase {
             return Room.databaseBuilder(
@@ -53,7 +69,7 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 name
             )
-            .addMigrations(MIGRATION_5_6, MIGRATION_6_7)
+            .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
             .build()
         }
 

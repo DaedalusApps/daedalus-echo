@@ -366,13 +366,15 @@ private fun TranscriptTab(transcript: String, query: String) {
     if (transcript.isEmpty()) {
         PlaceholderText("Tap 'Analyze' to transcribe this recording.")
     } else {
+        val formatted = remember(transcript) { TranscriptFormatter.formatParagraphs(transcript) }
+        val highlightedText = remember(formatted, query) { highlightMatches(formatted, query) }
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
             Text(
-                text = highlightMatches(TranscriptFormatter.formatParagraphs(transcript), query),
+                text = highlightedText,
                 style = MaterialTheme.typography.bodyMedium
             )
         }

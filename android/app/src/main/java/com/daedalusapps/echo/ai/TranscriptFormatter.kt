@@ -2,6 +2,8 @@ package com.daedalusapps.echo.ai
 
 object TranscriptFormatter {
 
+    private val SENTENCE_BOUNDARY_REGEX = Regex("(?<=[.!?])\\s+")
+
     /**
      * Breaks a wall of raw transcript text into readable, blank-line-separated paragraphs.
      *
@@ -12,7 +14,7 @@ object TranscriptFormatter {
     fun formatParagraphs(rawTranscript: String): String {
         if (rawTranscript.isBlank()) return ""
 
-        val sentences = rawTranscript.split(Regex("(?<=[.!?])\\s+")).filter { it.isNotBlank() }
+        val sentences = rawTranscript.split(SENTENCE_BOUNDARY_REGEX).filter { it.isNotBlank() }
         if (sentences.isEmpty()) return rawTranscript.trim()
 
         val sentencesPerParagraph = 3

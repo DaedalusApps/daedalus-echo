@@ -64,6 +64,8 @@ class RecordingViewModelTest {
     private val embedder = mockk<EmbeddingService>(relaxed = true)
     private val llm = mockk<LocalLlmService>(relaxed = true)
     
+    private val transcriber = mockk<TranscriptionService>(relaxed = true)
+    
     private lateinit var viewModel: RecordingViewModel
     private val testDispatcher = StandardTestDispatcher()
 
@@ -83,7 +85,6 @@ class RecordingViewModelTest {
         every { application.contentResolver } returns mockk(relaxed = true)
         
         val db = mockk<AppDatabase>(relaxed = true)
-        val transcriber = mockk<TranscriptionService>(relaxed = true)
         
         viewModel = RecordingViewModel(
             application = application,
@@ -100,6 +101,36 @@ class RecordingViewModelTest {
     fun tearDown() {
         Dispatchers.resetMain()
         unmockkStatic(Log::class)
+    }
+
+    @Test
+    fun analyze_resetsIsProcessingAndSyncProgressOnCompletion() = runTest {
+        val audioFile = File.createTempFile("test_audio", ".mp3").also { it.deleteOnExit() }
+        val note = Recording("rec.mp3", localPath = audioFile.absolutePath)
+        coEvery { repo.get("rec.mp3") } returns note
+        coEvery { transcriber.transcribe(any()) } returns "test transcript"
+        coEvery { llm.generate(any(), any<String>()) } returns """{"title":"T","shortSummary":"S","topics":[],"mindMap":"","fullSummary":"F"}"""
+
+        viewModel.analyze("rec.mp3")
+        advanceUntilIdle()
+
+        assertEquals(false, viewModel.isProcessing.value)
+        assertNull(viewModel.syncProgress.value)
+    }
+
+    @Test
+    fun analyze_resetsIsProcessingAndSyncProgressOnException() = runTest {
+        val audioFile = File.createTempFile("test_audio_err", ".mp3").also { it.deleteOnExit() }
+        val note = Recording("rec.mp3", localPath = audioFile.absolutePath)
+        coEvery { repo.get("rec.mp3") } returns note
+        coEvery { transcriber.transcribe(any()) } throws RuntimeException("Transcription failed")
+
+        viewModel.analyze("rec.mp3")
+        advanceUntilIdle()
+
+        assertEquals(false, viewModel.isProcessing.value)
+        assertNull(viewModel.syncProgress.value)
+        assertEquals("Transcription failed", viewModel.aiError.value)
     }
 
     @Test

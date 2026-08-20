@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+- Export audio recording ("audio passthrough") directly from Note Detail screen via Android's native share sheet.
+
 ## [1.2.4] - 2026-08-05
 
 ### Fixed

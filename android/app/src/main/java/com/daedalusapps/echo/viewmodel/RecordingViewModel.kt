@@ -6,7 +6,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.os.Environment
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -461,6 +460,50 @@ class RecordingViewModel @JvmOverloads constructor(
         }
     }
 
+    private fun shareFile(uri: Uri, mimeType: String, chooserTitle: String) {
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        _exportIntent.value = Intent.createChooser(shareIntent, chooserTitle)
+    }
+
+    fun exportAudio(filename: String) {
+        viewModelScope.launch {
+            val recording = repo.get(filename) ?: return@launch
+            val context = getApplication<Application>()
+            val file = if (recording.localPath.isNotBlank()) {
+                File(recording.localPath)
+            } else {
+                File(context.getExternalFilesDir(null), "Recordings/$filename")
+            }
+            if (!file.exists()) {
+                Log.e("RecordingViewModel", "Audio file does not exist: ${file.absolutePath}")
+                return@launch
+            }
+
+            val mimeType = when (file.extension.lowercase()) {
+                "mp3" -> "audio/mpeg"
+                "m4a" -> "audio/mp4"
+                "wav" -> "audio/wav"
+                else -> "audio/*"
+            }
+
+            val uri = try {
+                FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+            } catch (e: IllegalArgumentException) {
+                Log.e("RecordingViewModel", "Failed to get URI for audio file: ${file.absolutePath}", e)
+                return@launch
+            } catch (e: SecurityException) {
+                Log.e("RecordingViewModel", "Security exception getting URI for audio file: ${file.absolutePath}", e)
+                return@launch
+            }
+
+            shareFile(uri, mimeType, "Export audio")
+        }
+    }
+
     fun exportMarkdown(filename: String) {
         viewModelScope.launch {
             val recording = repo.get(filename) ?: return@launch
@@ -473,12 +516,7 @@ class RecordingViewModel @JvmOverloads constructor(
             withContext(ioDispatcher) { outFile.writeText(content) }
 
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", outFile)
-            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                type = "text/markdown"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            _exportIntent.value = Intent.createChooser(shareIntent, "Export as Markdown")
+            shareFile(uri, "text/markdown", "Export as Markdown")
         }
     }
 
@@ -493,12 +531,7 @@ class RecordingViewModel @JvmOverloads constructor(
             withContext(ioDispatcher) { outFile.writeText(content) }
 
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", outFile)
-            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                type = "text/markdown"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            _exportIntent.value = Intent.createChooser(shareIntent, "Export answer as Markdown")
+            shareFile(uri, "text/markdown", "Export answer as Markdown")
         }
     }
 

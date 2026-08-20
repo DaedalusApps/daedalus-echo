@@ -14,17 +14,22 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import androidx.arch.core.executor.testing.InstantTaskExecutorRule
+import android.content.Intent
+import android.net.Uri
+import androidx.core.content.FileProvider
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 import java.io.File
 import kotlin.coroutines.CoroutineContext
 
@@ -54,6 +59,7 @@ private class DispatchCountingDispatcher(
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
+@RunWith(RobolectricTestRunner::class)
 class RecordingViewModelTest {
 
     @get:Rule
@@ -310,6 +316,49 @@ class RecordingViewModelTest {
         val filenames = viewModel.searchPreview("Meeting")
 
         assertEquals(listOf("rec1.mp3", "rec2.mp3"), filenames)
+    }
+
+    @Test
+    fun exportAudio_emitsShareIntentWithAudioMimeType_whenFileExists() = runTest {
+        val audioFile = File.createTempFile("test_audio", ".mp3").also { it.deleteOnExit() }
+        val note = Recording("rec.mp3", localPath = audioFile.absolutePath)
+        coEvery { repo.get("rec.mp3") } returns note
+
+        val mockUri = mockk<Uri>()
+        mockkStatic(FileProvider::class)
+        every { FileProvider.getUriForFile(any(), any(), any()) } returns mockUri
+
+        viewModel.exportAudio("rec.mp3")
+        advanceUntilIdle()
+
+        val intent = viewModel.exportIntent.value
+        assertNotNull(intent)
+        assertEquals(Intent.ACTION_CHOOSER, intent?.action)
+        @Suppress("DEPRECATION")
+        val shareIntent = intent?.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
+        assertNotNull(shareIntent)
+        assertEquals(Intent.ACTION_SEND, shareIntent?.action)
+        assertEquals("audio/mpeg", shareIntent?.type)
+        assertEquals(mockUri, shareIntent?.getParcelableExtra(Intent.EXTRA_STREAM))
+        assertTrue(((shareIntent?.flags ?: 0) and Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0)
+
+        unmockkStatic(FileProvider::class)
+    }
+
+    @Test
+    fun exportAudio_doesNotEmitIntent_whenFileNotFound() = runTest {
+        coEvery { repo.get("missing.mp3") } returns null
+
+        viewModel.exportAudio("missing.mp3")
+        advanceUntilIdle()
+
+        assertNull(viewModel.exportIntent.value)
+
+        coEvery { repo.get("not_on_disk.mp3") } returns Recording("not_on_disk.mp3", localPath = "/non/existent/path/not_on_disk.mp3")
+        viewModel.exportAudio("not_on_disk.mp3")
+        advanceUntilIdle()
+
+        assertNull(viewModel.exportIntent.value)
     }
 }
 

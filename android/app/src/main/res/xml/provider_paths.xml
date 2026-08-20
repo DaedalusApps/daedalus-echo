@@ -2,4 +2,6 @@
 <paths>
     <cache-path name="cache" path="." />
     <external-path name="downloads" path="." />
+    <external-files-path name="recordings" path="Recordings" />
+    <external-files-path name="external_files" path="." />
 </paths>

@@ -7,23 +7,22 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
-import android.content.Intent
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -31,7 +30,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -50,7 +48,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -84,7 +81,6 @@ fun NoteDetailScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val prefs   = remember { context.getSharedPreferences("daedalus_prefs", android.content.Context.MODE_PRIVATE) }
     val note by recordingViewModel.currentNote.collectAsState()
     val isProcessing by recordingViewModel.isProcessing.collectAsState()
     val isAsking by recordingViewModel.isAsking.collectAsState()
@@ -95,9 +91,14 @@ fun NoteDetailScreen(
 
     // Launch share sheet when export intent is ready
     LaunchedEffect(exportIntent) {
-        exportIntent?.let {
-            context.startActivity(it)
-            recordingViewModel.clearExportIntent()
+        exportIntent?.let { intent ->
+            try {
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                Log.e("NoteDetailScreen", "Failed to start export activity", e)
+            } finally {
+                recordingViewModel.clearExportIntent()
+            }
         }
     }
 
@@ -146,6 +147,7 @@ fun NoteDetailScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showInNoteSearch by remember { mutableStateOf(false) }
     var inNoteQuery by remember { mutableStateOf("") }
+    var showOverflowMenu by remember { mutableStateOf(false) }
 
     if (showDeleteDialog) {
         AlertDialog(
@@ -193,6 +195,36 @@ fun NoteDetailScreen(
                     }
                     IconButton(onClick = { showDeleteDialog = true }) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete")
+                    }
+                    Box {
+                        IconButton(onClick = { showOverflowMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                        }
+                        DropdownMenu(
+                            expanded = showOverflowMenu,
+                            onDismissRequest = { showOverflowMenu = false }
+                        ) {
+                            val audioExists = remember(note?.localPath, filename) {
+                                (note?.localPath?.takeIf { it.isNotBlank() }?.let { File(it) }
+                                    ?: File(context.getExternalFilesDir(null), "Recordings/$filename")).exists()
+                            }
+                            DropdownMenuItem(
+                                text = { Text("Export audio") },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    recordingViewModel.exportAudio(filename)
+                                },
+                                enabled = audioExists && !isProcessing
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Export markdown") },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    recordingViewModel.exportMarkdown(filename)
+                                },
+                                enabled = transcript.isNotEmpty() && !isProcessing
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -261,7 +293,7 @@ fun NoteDetailScreen(
                                 isPlaying = false
                                 playbackPosition = 0L
                             } else {
-                                val file = note?.localPath?.let { File(it) }
+                                val file = note?.localPath?.takeIf { it.isNotBlank() }?.let { File(it) }
                                     ?: File(context.getExternalFilesDir(null), "Recordings/$filename")
                                 if (file.exists()) {
                                     player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))

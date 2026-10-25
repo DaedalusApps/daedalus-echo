@@ -29,7 +29,7 @@ object SmartAnalysisParser {
         val topicsStr = extractJsonField(raw, "topics")
 
         val topics = Regex(""""([^"\\]*)"""").findAll(topicsStr)
-            .map { it.groupValues[1] }
+            .map { unescapeModelText(it.groupValues[1]) }
             .filter { it.isNotBlank() }
             .toList()
 
@@ -43,7 +43,7 @@ object SmartAnalysisParser {
             mindMap.trimStart().startsWith("\"") ->
                 Regex(""""([^"]+)"""").findAll(mindMap)
                     .map { it.groupValues[1].trim() }.filter { it.isNotBlank() }.joinToString("\n")
-            else -> mindMap
+            else -> unescapeModelText(mindMap)
         }
 
         return SmartAnalysis(
@@ -98,6 +98,22 @@ object SmartAnalysisParser {
     private fun extractJsonField(json: String, field: String): String {
         val regex = Regex(""""$field"\s*:\s*(?:"([^"\\]*(?:\\.[^"\\]*)*)"|\[([^\]]*)\])""", RegexOption.DOT_MATCHES_ALL)
         val match = regex.find(json) ?: return ""
-        return match.groupValues[1].takeIf { it.isNotBlank() } ?: match.groupValues[2]
+        val value = match.groupValues[1].takeIf { it.isNotBlank() } ?: match.groupValues[2]
+        return unescapeModelText(value)
     }
+
+    /**
+     * Small local models sometimes double-escape JSON line breaks, leaving literal \\n in
+     * summaries. Normalize those sequences once so summaries and mind maps render as sections.
+     */
+    private fun unescapeModelText(value: String): String =
+        value
+            .replace("\\\\r\\\\n", "\n")
+            .replace("\\r\\n", "\n")
+            .replace("\\\\n", "\n")
+            .replace("\\n", "\n")
+            .replace("\\\\t", "\t")
+            .replace("\\t", "\t")
+            .replace("\\\\\"", "\"")
+            .replace("\\\\\\\\", "\\")
 }

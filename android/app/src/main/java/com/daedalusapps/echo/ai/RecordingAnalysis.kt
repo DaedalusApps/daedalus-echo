@@ -61,18 +61,20 @@ suspend fun analyzeTranscript(
         minOf(aiTextBudget(context), SUMMARY_CHUNK_BUDGET)
     )
     val rawResponse = if (!needsBulletSynthesis(transcript.length, chunks.size)) {
-        onProgress?.invoke("Analyzing with Gemma…")
+        onProgress?.invoke("Summary: 50%")
         llm.generate(activePrompt(context), chunks[0])
     } else {
         // "Section" rather than "part": a split recording's parts are a different thing, and
         // this progress text sits right under a part's own title.
         val chunkSummaries = chunks.mapIndexed { i, chunk ->
+            val percent = (i + 1) * 80 / chunks.size
             onProgress?.invoke(
-                if (chunks.size == 1) "Summarizing…" else "Summarizing section ${i + 1} of ${chunks.size}…"
+                if (chunks.size == 1) "Summary: $percent%"
+                else "Summary: $percent% (section ${i + 1} of ${chunks.size})"
             )
             llm.generate(CHUNK_SUMMARY_PROMPT, chunk)
         }
-        onProgress?.invoke("Synthesizing results…")
+        onProgress?.invoke("Summary: 90% — finalizing…")
         llm.generate(activePrompt(context), chunkSummaries.joinToString("\n\n"))
     }
     val cleanJson = stripCodeFences(rawResponse)
@@ -92,11 +94,29 @@ suspend fun analyzeTranscript(
     // leaves the note with no list preview and excluded from search. Backfill only shortSummary —
     // never title/topics/mindMap/summary — from fullSummary when available, else the transcript.
     // No-op when shortSummary already has content (#67).
-    val analysis = if (degradedOrParsed.shortSummary.isBlank()) {
+    var analysis = if (degradedOrParsed.shortSummary.isBlank()) {
         val source = degradedOrParsed.fullSummary.ifBlank { transcript }
         degradedOrParsed.copy(shortSummary = deriveFallbackShortSummary(source))
     } else {
         degradedOrParsed
+    }
+
+    // A malformed local-model response can occasionally contain mostly tokenizer fragments
+    // ("MAS", "is", markup tokens) while still looking non-empty to the structured parser.
+    // Never present that as a summary: use a clearly labelled, readable extract from the
+    // transcript instead. It is intentionally not presented as an AI interpretation.
+    if (!isReadableSummary(analysis.fullSummary)) {
+        Log.w("DaedalusAI", "Unreadable local-model summary; using transcript extract instead")
+        val fallbackSummary = createExtractiveSummary(transcript)
+        analysis = analysis.copy(
+            title = analysis.title.takeIf(::isReadableShortText)
+                ?: deriveFallbackTitle(transcript),
+            shortSummary = analysis.shortSummary.takeIf(::isReadableShortText)
+                ?: deriveFallbackShortSummary(fallbackSummary),
+            fullSummary = fallbackSummary,
+            mindMap = analysis.mindMap.takeIf(::isReadableSummary).orEmpty(),
+            topics = analysis.topics.filter(::isReadableShortText)
+        )
     }
 
     val fullSummaryFinal = if ("## Action Items" !in analysis.fullSummary) {
@@ -182,3 +202,38 @@ private fun truncateAnalysisTextAtWordBoundary(text: String, maxLength: Int): St
     val trimmed = if (lastSpace > 0) cut.substring(0, lastSpace) else cut
     return trimmed.trimEnd('.', ',', ';', ':', '-', ' ')
 }
+
+/**
+ * Guards against token-fragment output from a local model. Normal Italian prose has
+ * predominantly letters and multi-letter words; tokenizer debris does not.
+ */
+private fun isReadableSummary(text: String): Boolean {
+    val compact = text.filterNot(Char::isWhitespace)
+    if (compact.length < 24) return false
+    val letters = compact.count(Char::isLetter)
+    val words = Regex("""\p{L}+""").findAll(text).map { it.value }.toList()
+    if (words.size < 5 || letters * 100 < compact.length * 48) return false
+    val averageWordLength = words.sumOf { it.length }.toDouble() / words.size
+    return averageWordLength >= 2.7
+}
+
+private fun isReadableShortText(text: String): Boolean =
+    text.length >= 3 && Regex("""\p{L}{2,}""").containsMatchIn(text)
+
+/**
+ * A transparent, non-generative fallback for malformed summaries. It preserves a
+ * handful of substantial sentences instead of inventing a new interpretation.
+ */
+private fun createExtractiveSummary(transcript: String): String {
+    val sentences = transcript
+        .replace(Regex("""\s+"""), " ")
+        .split(Regex("""(?<=[.!?])\s+"""))
+        .map { it.trim() }
+        .filter { it.length >= 45 }
+
+    val excerpt = sentences.take(5).joinToString("\n\n")
+        .ifBlank { truncateAnalysisTextAtWordBoundary(transcript.replace(Regex("""\s+"""), " "), 900) }
+
+    return "## Estratto automatico\n\n" + excerpt
+}
+

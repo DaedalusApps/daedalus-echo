@@ -18,8 +18,7 @@ import kotlinx.coroutines.withContext
 enum class DownloadStep {
     IDLE,
     EMBEDDING,
-    WHISPER,
-    GEMMA,
+    PARAKEET,
     DONE,
     FAILED
 }
@@ -40,8 +39,7 @@ fun ModelDownloadScreen(onReady: () -> Unit) {
     // Start download worker
     suspend fun performSequentialDownload() {
         if (downloadStep == DownloadStep.EMBEDDING ||
-            downloadStep == DownloadStep.WHISPER ||
-            downloadStep == DownloadStep.GEMMA) {
+            downloadStep == DownloadStep.PARAKEET) {
             return
         }
         errorMessage = null
@@ -49,8 +47,7 @@ fun ModelDownloadScreen(onReady: () -> Unit) {
         
         withContext(Dispatchers.IO) {
             val embeddingDownloader = ModelDownloader(context)
-            val whisperDownloader = WhisperDownloader(context)
-            val gemmaDownloader = ModelDownloader(context)
+            val parakeetDownloader = ParakeetDownloader(context)
 
             // Step 1: Embedding Model (26 MB)
             val embeddingModel = LocalModel(
@@ -65,14 +62,14 @@ fun ModelDownloadScreen(onReady: () -> Unit) {
                 withContext(Dispatchers.Main) {
                     downloadStep = DownloadStep.EMBEDDING
                     progressPct = 0
-                    statusText = "Downloading Embedding Model (1/3)…"
+                    statusText = "Downloading Embedding Model (1/2)…"
                 }
                 val job = launch {
                     embeddingDownloader.state.collect { state ->
                         if (state is DownloadState.Downloading) {
                             withContext(Dispatchers.Main) {
                                 progressPct = state.progressPct
-                                statusText = "Downloading Embedding Model (1/3): ${state.progressPct}%"
+                                statusText = "Downloading Embedding Model (1/2): ${state.progressPct}%"
                             }
                         }
                     }
@@ -98,31 +95,36 @@ fun ModelDownloadScreen(onReady: () -> Unit) {
                 }
             }
 
-            // Step 2: Whisper base.en (119 MB)
-            if (!isWhisperReady(context)) {
+            // Step 2: Parakeet TDT v3 (multilingual, Italian-first)
+            if (!isParakeetReady(context)) {
                 withContext(Dispatchers.Main) {
-                    downloadStep = DownloadStep.WHISPER
+                    downloadStep = DownloadStep.PARAKEET
                     progressPct = 0
-                    statusText = "Downloading Whisper Model (2/3)…"
+                    statusText = "Downloading Parakeet Italian model (2/2)…"
                 }
                 val job = launch {
-                    whisperDownloader.state.collect { state ->
+                    parakeetDownloader.state.collect { state ->
                         if (state is DownloadState.Downloading) {
                             withContext(Dispatchers.Main) {
                                 progressPct = state.progressPct
-                                statusText = "Downloading Whisper Model (2/3): ${state.progressPct}%"
+                                statusText = "Downloading Parakeet Italian model (2/2): ${state.progressPct}%"
+                            }
+                        } else if (state is DownloadState.Installing) {
+                            withContext(Dispatchers.Main) {
+                                progressPct = 100
+                                statusText = "Installing Parakeet Italian model (2/2)…"
                             }
                         }
                     }
                 }
                 try {
-                    whisperDownloader.download()
+                    parakeetDownloader.download()
                     job.cancel()
-                    val finalState = whisperDownloader.state.value
+                    val finalState = parakeetDownloader.state.value
                     if (finalState is DownloadState.Failed) {
                         withContext(Dispatchers.Main) {
                             downloadStep = DownloadStep.FAILED
-                            errorMessage = "Whisper model failed: ${finalState.message}"
+                            errorMessage = "Parakeet model failed: ${finalState.message}"
                         }
                         return@withContext
                     }
@@ -130,45 +132,7 @@ fun ModelDownloadScreen(onReady: () -> Unit) {
                     job.cancel()
                     withContext(Dispatchers.Main) {
                         downloadStep = DownloadStep.FAILED
-                        errorMessage = "Whisper model failed: ${e.message}"
-                    }
-                    return@withContext
-                }
-            }
-
-            // Step 3: Gemma 3 1B (555 MB)
-            if (!modelFile(context).exists()) {
-                withContext(Dispatchers.Main) {
-                    downloadStep = DownloadStep.GEMMA
-                    progressPct = 0
-                    statusText = "Downloading Gemma 3 1B Model (3/3)…"
-                }
-                val job = launch {
-                    gemmaDownloader.state.collect { state ->
-                        if (state is DownloadState.Downloading) {
-                            withContext(Dispatchers.Main) {
-                                progressPct = state.progressPct
-                                statusText = "Downloading Gemma 3 1B Model (3/3): ${state.progressPct}%"
-                            }
-                        }
-                    }
-                }
-                try {
-                    gemmaDownloader.download(GEMMA3_1B)
-                    job.cancel()
-                    val finalState = gemmaDownloader.state.value
-                    if (finalState is DownloadState.Failed) {
-                        withContext(Dispatchers.Main) {
-                            downloadStep = DownloadStep.FAILED
-                            errorMessage = "Gemma model failed: ${finalState.message}"
-                        }
-                        return@withContext
-                    }
-                } catch (e: Exception) {
-                    job.cancel()
-                    withContext(Dispatchers.Main) {
-                        downloadStep = DownloadStep.FAILED
-                        errorMessage = "Gemma model failed: ${e.message}"
+                        errorMessage = "Parakeet model failed: ${e.message}"
                     }
                     return@withContext
                 }
@@ -233,7 +197,7 @@ fun ModelDownloadScreen(onReady: () -> Unit) {
                     }
                 }
 
-                DownloadStep.EMBEDDING, DownloadStep.WHISPER, DownloadStep.GEMMA -> {
+                DownloadStep.EMBEDDING, DownloadStep.PARAKEET -> {
                     Text(statusText, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
                     Spacer(Modifier.height(20.dp))
                     LinearProgressIndicator(progress = { progressPct / 100f }, modifier = Modifier.fillMaxWidth())
@@ -259,9 +223,8 @@ fun ModelDownloadScreen(onReady: () -> Unit) {
                     Text(
                         "Daedalus processes transcription and summaries entirely on-device for 100% privacy. To begin, click below to download the required models:\n\n" +
                         "• Universal Sentence Encoder (~26 MB)\n" +
-                        "• Whisper base.en (~119 MB)\n" +
-                        "• Gemma 3 1B (~555 MB)\n\n" +
-                        "Total size is ~700 MB.",
+                        "• Parakeet TDT v3 multilingual (~1.25 GB)\n\n" +
+                        "Then import Gemma 4 E2B from Settings to create local summaries. Parakeet recognizes Italian and other European languages locally; speaker identity is not inferred.",
                         style = MaterialTheme.typography.bodyMedium,
                         textAlign = TextAlign.Start,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -271,7 +234,7 @@ fun ModelDownloadScreen(onReady: () -> Unit) {
                         onClick = { scope.launch { performSequentialDownload() } },
                         modifier = Modifier.fillMaxWidth().height(52.dp)
                     ) {
-                        Text("Download All Models (One-Click)")
+                        Text("Download required speech models")
                     }
                 }
             }

@@ -28,7 +28,7 @@ val vName = versionProps.getProperty("VERSION_NAME", "1.0.0")
 
 // sherpa-onnx ships only a prebuilt Android .aar (no Maven artifact), so we fetch it
 // at build time instead of committing the 56 MB binary. See downloadSherpaOnnx below.
-val sherpaOnnxVersion = "1.13.2"
+val sherpaOnnxVersion = "1.13.8"
 
 val keystorePropsFile = rootProject.file("keystore.properties")
 val keystoreProps = Properties().apply {
@@ -78,9 +78,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_21
     }
 
-    kotlinOptions {
-        jvmTarget = "21"
-    }
 
     buildFeatures {
         compose = true
@@ -109,6 +106,12 @@ android {
     }
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+    }
+}
+
 kapt {
     arguments {
         arg("room.schemaLocation", "$projectDir/schemas")
@@ -133,12 +136,16 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     kapt(libs.room.compiler)
+    // LiteRT-LM 0.18 carries Kotlin 2.4 metadata; Room 2.8 needs this newer reader on KAPT\'s processor path.
+    kapt("org.jetbrains.kotlin:kotlin-metadata-jvm:2.4.21")
 
     // HTTP (model download only)
     implementation(libs.okhttp)
 
-    // On-device AI — MediaPipe LLM Inference (tasks-genai .bin format models)
+    // Legacy runtime stays available while existing Gemma 3 1B installations are supported.
     implementation(libs.mediapipe.genai)
+    // Modern local runtime for optional .litertlm Gemma models.
+    implementation(libs.litertlm.android)
     // On-device text embeddings for semantic note search
     implementation(libs.mediapipe.tasks.text)
 

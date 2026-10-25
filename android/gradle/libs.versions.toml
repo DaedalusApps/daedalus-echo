@@ -1,10 +1,10 @@
 [versions]
 agp = "8.7.3"
-kotlin = "2.0.21"
+kotlin = "2.4.0"
 compose-bom = "2024.12.01"
 lifecycle = "2.8.7"
 navigation = "2.8.5"
-room = "2.6.1"
+room = "2.8.5"
 okhttp = "4.12.0"
 media3 = "1.5.1"
 coroutines = "1.9.0"
@@ -12,6 +12,8 @@ activity-compose = "1.9.3"
 core-ktx = "1.15.0"
 appcompat = "1.7.0"
 mediapipe-genai = "0.10.35"
+litertlm = "0.18.0"
+
 documentfile = "1.0.1"
 junit4       = "4.13.2"
 mockk        = "1.13.10"
@@ -47,6 +49,7 @@ coroutines-android    = { group = "org.jetbrains.kotlinx", name = "kotlinx-corou
 core-ktx              = { group = "androidx.core", name = "core-ktx",                  version.ref = "core-ktx" }
 appcompat             = { group = "androidx.appcompat", name = "appcompat",            version.ref = "appcompat" }
 mediapipe-genai       = { group = "com.google.mediapipe", name = "tasks-genai",        version.ref = "mediapipe-genai" }
+litertlm-android       = { group = "com.google.ai.edge.litertlm", name = "litertlm-android", version.ref = "litertlm" }
 mediapipe-tasks-text  = { group = "com.google.mediapipe", name = "tasks-text",         version.ref = "mediapipe-genai" }
 documentfile          = { group = "androidx.documentfile", name = "documentfile",        version.ref = "documentfile" }
 junit4                = { group = "junit", name = "junit",                                version.ref = "junit4" }

@@ -27,12 +27,17 @@ import com.daedalusapps.echo.ai.EMBEDDING_MODEL_FILE
 import com.daedalusapps.echo.ai.EMBEDDING_MODEL_SIZE_BYTES
 import com.daedalusapps.echo.ai.EMBEDDING_MODEL_URL
 import com.daedalusapps.echo.ai.GEMMA3_1B
+import com.daedalusapps.echo.ai.GEMMA4_E2B_FILE
+import com.daedalusapps.echo.ai.GEMMA4_E2B_MIN_BYTES
+import com.daedalusapps.echo.ai.GEMMA4_E2B_PREF
+import com.daedalusapps.echo.ai.gemma4E2bFile
 import com.daedalusapps.echo.ai.LocalModel
+import com.daedalusapps.echo.ai.MEETING_GLOSSARY_KEY
 import com.daedalusapps.echo.ai.ModelDownloader
-import com.daedalusapps.echo.ai.WHISPER_TOTAL_BYTES
-import com.daedalusapps.echo.ai.WhisperDownloader
+import com.daedalusapps.echo.ai.PARAKEET_TOTAL_BYTES
+import com.daedalusapps.echo.ai.ParakeetDownloader
 import com.daedalusapps.echo.ai.embeddingModelFile
-import com.daedalusapps.echo.ai.isWhisperReady
+import com.daedalusapps.echo.ai.isParakeetReady
 import com.daedalusapps.echo.data.backup.BackupManager
 import com.daedalusapps.echo.data.backup.BackupPrefs
 import com.daedalusapps.echo.data.backup.BackupWorker
@@ -150,9 +155,10 @@ fun SettingsScreen(
         }
     }
 
-    val whisperDownloader = remember { WhisperDownloader(context) }
-    val whisperState by whisperDownloader.state.collectAsState()
-    val whisperReady = remember(whisperState) { isWhisperReady(context) }
+    val parakeetDownloader = remember { ParakeetDownloader(context) }
+    val parakeetState by parakeetDownloader.state.collectAsState()
+    val parakeetReady = remember(parakeetState) { isParakeetReady(context) }
+    var glossary by remember { mutableStateOf(prefs.getString(MEETING_GLOSSARY_KEY, "") ?: "") }
 
     val embeddingModel = remember {
         LocalModel(
@@ -167,6 +173,32 @@ fun SettingsScreen(
     val embeddingDownloader = remember { ModelDownloader(context) }
     val embeddingState by embeddingDownloader.state.collectAsState()
     val embeddingReady = remember(embeddingState) { embeddingModelFile(context).exists() }
+
+    var gemma4Ready by remember { mutableStateOf(gemma4E2bFile(context).length() >= GEMMA4_E2B_MIN_BYTES) }
+    var gemma4Enabled by remember { mutableStateOf(prefs.getBoolean(GEMMA4_E2B_PREF, false)) }
+    val gemma4ImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) scope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    val dest = gemma4E2bFile(context)
+                    val tmp = java.io.File(dest.parentFile, "$GEMMA4_E2B_FILE.tmp")
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        tmp.outputStream().use { input.copyTo(it) }
+                    } ?: error("Cannot read selected model")
+                    check(tmp.length() >= GEMMA4_E2B_MIN_BYTES) { "Selected file is not a complete Gemma 4 E2B model" }
+                    if (!tmp.renameTo(dest)) { tmp.copyTo(dest, overwrite = true); tmp.delete() }
+                }
+                prefs.edit().putBoolean(GEMMA4_E2B_PREF, true).apply()
+                gemma4Ready = true
+                gemma4Enabled = true
+                snackbar.showSnackbar("Gemma 4 E2B enabled. Restart the app before analyzing.")
+            } catch (e: Exception) {
+                snackbar.showSnackbar("Gemma 4 import failed: ${e.message}")
+            }
+        }
+    }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json"),
@@ -257,28 +289,38 @@ fun SettingsScreen(
                     }
                 }
 
-                // STT — Whisper only
+                Card(colors = CardDefaults.cardColors(containerColor = if (gemma4Ready) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Gemma 4 E2B — quality summaries", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text("~2.6 GB · Offline · import after accepting the Gemma licence on Hugging Face", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (gemma4Ready && gemma4Enabled) Text("Active after app restart", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                        else if (gemma4Ready) Button(onClick = { prefs.edit().putBoolean(GEMMA4_E2B_PREF, true).apply(); gemma4Enabled = true }, modifier = Modifier.fillMaxWidth()) { Text("Enable Gemma 4 E2B") }
+                        else OutlinedButton(onClick = { gemma4ImportLauncher.launch(arrayOf("application/octet-stream", "*/*")) }, modifier = Modifier.fillMaxWidth()) { Text("Import Gemma 4 E2B") }
+                    }
+                }
+
+                // STT — multilingual Parakeet, runs entirely on-device.
                 Text("Speech-to-Text Engine", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Card(colors = CardDefaults.cardColors(
-                    containerColor = if (whisperReady) MaterialTheme.colorScheme.primaryContainer
+                    containerColor = if (parakeetReady) MaterialTheme.colorScheme.primaryContainer
                                      else MaterialTheme.colorScheme.surfaceVariant
                 )) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Whisper base.en", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                        Text("~160 MB · High accuracy · On-device", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Parakeet TDT v3 — Italiano", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text("~1.25 GB · Italian + 24 European languages · On-device", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         when {
-                            whisperReady -> Text("Active", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                            whisperState is DownloadState.Downloading -> {
-                                val dl = whisperState as DownloadState.Downloading
+                            parakeetReady -> Text("Active — speaker names are manual, not inferred", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                            parakeetState is DownloadState.Downloading -> {
+                                val dl = parakeetState as DownloadState.Downloading
                                 LinearProgressIndicator(progress = { dl.progressPct / 100f }, modifier = Modifier.fillMaxWidth())
-                                Text("Downloading… ${dl.progressPct}%  ·  ${dl.bytesDownloaded / 1_048_576} / ${WHISPER_TOTAL_BYTES / 1_048_576} MB", style = MaterialTheme.typography.bodySmall)
+                                Text("Downloading… ${dl.progressPct}%  ·  ${dl.bytesDownloaded / 1_048_576} / ${PARAKEET_TOTAL_BYTES / 1_048_576} MB", style = MaterialTheme.typography.bodySmall)
                             }
-                            whisperState is DownloadState.Failed -> {
-                                Text("Error: ${(whisperState as DownloadState.Failed).message}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                                OutlinedButton(onClick = { scope.launch { whisperDownloader.download() } }, modifier = Modifier.fillMaxWidth()) { Text("Retry") }
+                            parakeetState is DownloadState.Failed -> {
+                                Text("Error: ${(parakeetState as DownloadState.Failed).message}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                                OutlinedButton(onClick = { scope.launch { parakeetDownloader.download() } }, modifier = Modifier.fillMaxWidth()) { Text("Retry") }
                             }
-                            else -> Button(onClick = { scope.launch { whisperDownloader.download() } }, modifier = Modifier.fillMaxWidth()) {
-                                Text("Download (~160 MB)")
+                            else -> Button(onClick = { scope.launch { parakeetDownloader.download() } }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Download (~1.25 GB)")
                             }
                         }
                     }
@@ -320,6 +362,18 @@ fun SettingsScreen(
                     OutlinedButton(onClick = onNavigateToPromptEditor, modifier = Modifier.fillMaxWidth()) {
                         Text("Configure Prompt")
                     }
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Glossario riunioni", style = MaterialTheme.typography.bodyMedium)
+                    Text("Un termine per riga. Viene passato al riepilogo locale per preservare nomi, acronimi e termini di progetto.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedTextField(
+                        value = glossary,
+                        onValueChange = { glossary = it; prefs.edit().putString(MEETING_GLOSSARY_KEY, it).apply() },
+                        label = { Text("Es. HarkNote, Parakeet, cliente Alfa") },
+                        minLines = 3,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
 
                 ExposedDropdownMenuBox(

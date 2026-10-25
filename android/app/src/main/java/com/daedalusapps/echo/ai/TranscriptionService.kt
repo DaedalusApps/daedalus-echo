@@ -8,7 +8,7 @@ import android.util.Log
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
-import com.k2fsa.sherpa.onnx.OfflineWhisperModelConfig
+import com.k2fsa.sherpa.onnx.OfflineTransducerModelConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -23,47 +23,61 @@ private const val CHUNK_SAMPLES = CHUNK_DURATION_SECONDS * TARGET_SAMPLE_RATE
 
 class TranscriptionService(private val context: Context) {
 
-    suspend fun transcribe(audioFile: File): String = withContext(Dispatchers.IO) {
-        if (!isWhisperReady(context)) return@withContext ""
-        Log.i(TAG, "Using Whisper for ${audioFile.name}")
-        transcribeWithWhisper(audioFile)
+    suspend fun transcribe(
+        audioFile: File,
+        onProgress: ((completedChunks: Int, totalChunks: Int) -> Unit)? = null
+    ): String = withContext(Dispatchers.IO) {
+        if (!isParakeetReady(context)) return@withContext ""
+        Log.i(TAG, "Using Parakeet TDT v3 for ${audioFile.name}")
+        transcribeWithParakeet(audioFile, onProgress)
     }
 
-    private fun transcribeWithWhisper(audioFile: File): String {
-        val dir = whisperModelDir(context)
+    private fun transcribeWithParakeet(
+        audioFile: File,
+        onProgress: ((completedChunks: Int, totalChunks: Int) -> Unit)?
+    ): String {
+        val dir = parakeetModelDir(context)
         val config = OfflineRecognizerConfig(
             modelConfig = OfflineModelConfig(
-                whisper = OfflineWhisperModelConfig(
-                    encoder = File(dir, WHISPER_ENCODER_FILE).absolutePath,
-                    decoder = File(dir, WHISPER_DECODER_FILE).absolutePath,
-                    language = "en",
-                    task = "transcribe",
+                transducer = OfflineTransducerModelConfig(
+                    encoder = File(dir, PARAKEET_ENCODER_FILE).absolutePath,
+                    decoder = File(dir, PARAKEET_DECODER_FILE).absolutePath,
+                    joiner = File(dir, PARAKEET_JOINER_FILE).absolutePath,
                 ),
-                tokens = File(dir, WHISPER_TOKENS_FILE).absolutePath,
+                tokens = File(dir, PARAKEET_TOKENS_FILE).absolutePath,
+                modelType = "nemo_transducer",
                 numThreads = 4,
             )
         )
         val recognizer = OfflineRecognizer(config = config)
         return try {
             val pcm = decodeToPcmFloat(audioFile)
-            Log.i(TAG, "Decoded ${pcm.size} float samples, feeding to Whisper")
+            Log.i(TAG, "Decoded ${pcm.size} float samples, feeding to Parakeet")
 
             val parts = mutableListOf<String>()
+            val totalChunks = (pcm.size + CHUNK_SAMPLES - 1) / CHUNK_SAMPLES
+            var chunkIndex = 0
             var offset = 0
+            onProgress?.invoke(0, totalChunks)
             while (offset < pcm.size) {
                 val end = minOf(offset + CHUNK_SAMPLES, pcm.size)
                 val chunk = pcm.copyOfRange(offset, end)
+                val meanLevel = chunk.fold(0.0) { total, sample -> total + kotlin.math.abs(sample) } / chunk.size
+                Log.i(TAG, "Decoding Parakeet chunk ${chunkIndex + 1}/$totalChunks (mean level=$meanLevel)")
                 val stream = recognizer.createStream()
                 stream.acceptWaveform(samples = chunk, sampleRate = TARGET_SAMPLE_RATE)
                 recognizer.decode(stream)
                 val chunkText = recognizer.getResult(stream).text.trim()
                 stream.release()
+                Log.i(TAG, "Parakeet chunk ${chunkIndex + 1}/$totalChunks produced ${chunkText.length} characters")
                 if (chunkText.isNotEmpty()) parts.add(chunkText)
+                chunkIndex++
+                onProgress?.invoke(chunkIndex, totalChunks)
                 offset = end
             }
 
             val text = parts.joinToString(" ")
-            Log.i(TAG, "Whisper complete: ${text.length} chars across ${parts.size} chunk(s)")
+            Log.i(TAG, "Parakeet complete: ${text.length} chars across ${parts.size} chunk(s)")
             text
         } finally {
             recognizer.release()
@@ -137,7 +151,12 @@ class TranscriptionService(private val context: Context) {
                         }
 
                         val outputBuf = codec.getOutputBuffer(outputIdx)!!
-                        val shortBuf = outputBuf.order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+                        // MediaCodec buffers can contain bytes outside BufferInfo's valid
+                        // range. Respect offset/size so long recordings never mix stale
+                        // PCM from a previous output buffer into the transcript.
+                        outputBuf.position(info.offset)
+                        outputBuf.limit(info.offset + info.size)
+                        val shortBuf = outputBuf.slice().order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
                         val samples = ShortArray(shortBuf.remaining())
                         shortBuf.get(samples)
 

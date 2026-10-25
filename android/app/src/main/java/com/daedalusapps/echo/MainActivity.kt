@@ -129,6 +129,10 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.MODIFY_AUDIO_SETTINGS
         )
+        // Android 13+ requires this permission for visible lock-screen controls.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions += Manifest.permission.POST_NOTIFICATIONS
+        }
         permissionLauncher.launch(permissions.toTypedArray())
     }
 

@@ -13,6 +13,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
 
+@Deprecated("Use ParakeetDownloader for multilingual transcription")
 class WhisperDownloader(private val context: Context) {
 
     private val _state = MutableStateFlow<DownloadState>(DownloadState.Idle)

@@ -17,7 +17,7 @@ import com.daedalusapps.echo.ai.VoiceInfo
 import com.daedalusapps.echo.ai.aiTextBudget
 import com.daedalusapps.echo.ai.analyzeTranscript
 import com.daedalusapps.echo.ai.expandWithTopicSiblings
-import com.daedalusapps.echo.ai.isWhisperReady
+import com.daedalusapps.echo.ai.isParakeetReady
 import com.daedalusapps.echo.ai.sourceText
 import com.daedalusapps.echo.data.RecordingRepository
 import com.daedalusapps.echo.data.db.AppDatabase
@@ -530,7 +530,7 @@ class ConversationViewModel @JvmOverloads constructor(
         if (_isRecordingVoice.value || _isTranscribing.value || _isGenerating.value) return
         suppressNextAutoListen = false
         val application = getApplication<Application>()
-        if (!isWhisperReady(application)) {
+        if (!isParakeetReady(application)) {
             _error.value = "Voice input needs the transcription model — download it in Settings."
             return
         }

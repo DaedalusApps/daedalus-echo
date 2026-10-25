@@ -1,11 +1,14 @@
 package com.daedalusapps.echo.viewmodel
 
 import android.app.Application
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -21,12 +24,14 @@ import com.daedalusapps.echo.ai.LocalLlmService
 import com.daedalusapps.echo.ai.MarkdownExporter
 import com.daedalusapps.echo.ai.TranscriptFormatter
 import com.daedalusapps.echo.ai.TranscriptionService
-import com.daedalusapps.echo.ai.isWhisperReady
+import com.daedalusapps.echo.ai.isParakeetReady
 import com.daedalusapps.echo.data.RecordingRepository
 import com.daedalusapps.echo.data.db.AppDatabase
 import com.daedalusapps.echo.data.model.AudioUtils
 import com.daedalusapps.echo.data.model.Recording
 import com.daedalusapps.echo.recording.AudioRecorder
+import com.daedalusapps.echo.recording.RecordingForegroundService
+import com.daedalusapps.echo.recording.RecordingControlBus
 import com.daedalusapps.echo.ui.mindmap.GlobalGraph
 import com.daedalusapps.echo.ui.mindmap.GraphBuilder
 import kotlinx.coroutines.CoroutineDispatcher
@@ -156,6 +161,18 @@ class RecordingViewModel @JvmOverloads constructor(
             useBluetoothMic.value = savedVal
         }
 
+        // Commands from the persistent lock-screen notification. The foreground
+        // service keeps this process alive while recording is active.
+        viewModelScope.launch {
+            RecordingControlBus.commands.collect { command ->
+                when (command) {
+                    RecordingControlBus.Command.PAUSE -> pauseLocalRecording()
+                    RecordingControlBus.Command.RESUME -> resumeLocalRecording()
+                    RecordingControlBus.Command.STOP -> stopLocalRecording()
+                }
+            }
+        }
+
         // Heal missing durations for already synced/recorded files
         viewModelScope.launch(ioDispatcher) {
             repo.allRecordings.first().forEach { recording ->
@@ -194,6 +211,7 @@ class RecordingViewModel @JvmOverloads constructor(
         maxDurationCapSeconds = readMaxDurationCapSeconds()
 
         try {
+            RecordingForegroundService.start(context, file.name)
             audioRecorder.start(file, useBluetoothMic.value)
             _isRecording.value = true
             _isPaused.value = false
@@ -204,6 +222,7 @@ class RecordingViewModel @JvmOverloads constructor(
             recordingTimerJob = launchTimerLoop(initialElapsed = 0L)
             Log.i("RecordingViewModel", "Started local recording: ${file.name}")
         } catch (e: Exception) {
+            RecordingForegroundService.stop(context)
             Log.e("RecordingViewModel", "Failed to start local recording", e)
             _aiError.value = "Failed to start recording: ${e.message}"
         }
@@ -257,6 +276,7 @@ class RecordingViewModel @JvmOverloads constructor(
     fun stopLocalRecording() {
         if (!_isRecording.value) return
         audioRecorder.stop()
+        RecordingForegroundService.stop(getApplication())
         recordingTimerJob?.cancel()
         _isRecording.value = false
         _isPaused.value = false
@@ -270,6 +290,9 @@ class RecordingViewModel @JvmOverloads constructor(
             val duration = _recordingDurationSeconds.value * 1000L
             val name = file.name
             viewModelScope.launch {
+                // Keep a user-visible safety copy outside the app sandbox. It survives
+                // app updates/uninstalls and is stored as a document, not music.
+                withContext(ioDispatcher) { copyAudioToDocuments(file) }
                 val recording = Recording(
                     filename = name,
                     localPath = file.absolutePath,
@@ -378,9 +401,18 @@ class RecordingViewModel @JvmOverloads constructor(
             _syncProgress.value = "Transcribing audio…"
             AnalysisForegroundService.start(getApplication(), filename, "Transcribing audio…")
             Log.i("DaedalusAI", "Transcribing ${localFile.name}")
-            val transcript = transcriber.transcribe(localFile)
+            val transcript = transcriber.transcribe(localFile) { completed, total ->
+                val progress = if (total == 0) 0 else (completed * 100 / total)
+                val status = if (completed == 0) {
+                    "Preparing audio for transcription…"
+                } else {
+                    "Transcribing audio: $progress% ($completed/$total sections)"
+                }
+                _syncProgress.value = status
+                AnalysisForegroundService.start(getApplication(), filename, status)
+            }
             if (transcript.isBlank()) {
-                val modelReady = isWhisperReady(getApplication())
+                val modelReady = isParakeetReady(getApplication())
                 _aiError.value = if (modelReady) {
                     "No speech detected in this recording (too short or silent)."
                 } else {
@@ -457,6 +489,40 @@ class RecordingViewModel @JvmOverloads constructor(
             delay(1000)
             _syncProgress.value = null
             _isProcessing.value = false
+        }
+    }
+
+    /**
+     * Makes a best-effort archival copy in Documents/Daedalus Echo. The MIME type is
+     * deliberately generic so music players do not add recordings to their library.
+     */
+    private fun copyAudioToDocuments(source: File) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        try {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, source.name)
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS + "/Daedalus Echo")
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val resolver = getApplication<Application>().contentResolver
+            val uri = resolver.insert(MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)
+                ?: error("Could not create archival copy")
+            try {
+                resolver.openOutputStream(uri)?.use { output ->
+                    source.inputStream().use { input -> input.copyTo(output) }
+                } ?: error("Could not open archival copy")
+                resolver.update(uri, ContentValues().apply {
+                    put(MediaStore.MediaColumns.IS_PENDING, 0)
+                }, null, null)
+                Log.i("RecordingViewModel", "Archived audio copy in Documents/Daedalus Echo: ${source.name}")
+            } catch (e: Exception) {
+                resolver.delete(uri, null, null)
+                throw e
+            }
+        } catch (e: Exception) {
+            // Recording and local analysis must remain usable even if shared storage is unavailable.
+            Log.w("RecordingViewModel", "Could not archive audio copy", e)
         }
     }
 

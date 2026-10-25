@@ -7,16 +7,32 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.daedalusapps.echo.R
 
 class AnalysisForegroundService : Service() {
+    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        wakeLock = (getSystemService(Context.POWER_SERVICE) as PowerManager)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:audio-analysis")
+            .apply {
+                setReferenceCounted(false)
+                acquire(MAX_ANALYSIS_WAKE_LOCK_MILLIS)
+            }
+    }
+
+    override fun onDestroy() {
+        wakeLock?.let { lock ->
+            if (lock.isHeld) lock.release()
+        }
+        wakeLock = null
+        super.onDestroy()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -63,6 +79,7 @@ class AnalysisForegroundService : Service() {
         const val EXTRA_STATUS = "extra_status"
         const val ACTION_START = "com.daedalusapps.echo.START_ANALYSIS_SERVICE"
         const val ACTION_STOP = "com.daedalusapps.echo.STOP_ANALYSIS_SERVICE"
+        private const val MAX_ANALYSIS_WAKE_LOCK_MILLIS = 6 * 60 * 60 * 1000L
 
         fun start(context: Context, filename: String, status: String) {
             try {

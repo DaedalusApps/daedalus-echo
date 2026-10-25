@@ -16,6 +16,7 @@ import java.util.zip.ZipInputStream
 sealed class DownloadState {
     object Idle : DownloadState()
     data class Downloading(val progressPct: Int, val bytesDownloaded: Long, val totalBytes: Long) : DownloadState()
+    data class Installing(val message: String) : DownloadState()
     object Done : DownloadState()
     data class Failed(val message: String) : DownloadState()
 }

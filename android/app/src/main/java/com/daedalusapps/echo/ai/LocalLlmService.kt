@@ -2,6 +2,13 @@ package com.daedalusapps.echo.ai
 
 import android.content.Context
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
+import com.google.ai.edge.litertlm.Backend
+import com.google.ai.edge.litertlm.ConversationConfig
+import com.google.ai.edge.litertlm.Contents
+import com.google.ai.edge.litertlm.Engine
+import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.Message
+import com.google.ai.edge.litertlm.SamplerConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -48,6 +55,7 @@ class LocalLlmService(private val context: Context) {
 
     @Volatile
     private var inference: LlmInference? = null
+    private var modernEngine: Engine? = null
     private val mutex = Mutex()
 
     // Independent of any caller's coroutine (e.g. ConversationViewModel's generationJob), so
@@ -55,9 +63,28 @@ class LocalLlmService(private val context: Context) {
     // generate()'s KDoc for why that matters.
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    val isReady: Boolean get() = inference != null
+    val isReady: Boolean get() = if (useGemma4E2b(context)) modernEngine != null else inference != null
 
     suspend fun ensureLoaded() {
+        if (useGemma4E2b(context)) {
+            if (modernEngine != null) return
+            mutex.withLock {
+                if (modernEngine != null) return@withLock
+                withContext(Dispatchers.IO) {
+                    val file = gemma4E2bFile(context)
+                    check(file.length() >= GEMMA4_E2B_MIN_BYTES) { "Gemma 4 E2B not imported completely" }
+                    modernEngine = Engine(
+                        EngineConfig(
+                            modelPath = file.absolutePath,
+                            backend = Backend.CPU(),
+                            cacheDir = context.cacheDir.absolutePath
+                        )
+                    ).also { it.initialize() }
+                    Log.i("DaedalusAI", "Gemma 4 E2B loaded with LiteRT-LM")
+                }
+            }
+            return
+        }
         if (inference != null) return
         mutex.withLock {
             if (inference != null) return@withLock
@@ -108,6 +135,25 @@ class LocalLlmService(private val context: Context) {
      * call simply waits rather than racing it.
      */
     suspend fun generate(systemPrompt: String, turns: List<ChatTurn>): String {
+        if (useGemma4E2b(context)) {
+            return serviceScope.async {
+                mutex.withLock {
+                    val engine = modernEngine ?: error("Gemma 4 E2B not loaded")
+                    val prior = turns.dropLast(1).map {
+                        if (it.role == Role.USER) Message.user(it.text) else Message.model(it.text)
+                    }
+                    engine.createConversation(
+                        ConversationConfig(
+                            systemInstruction = Contents.of(systemPrompt),
+                            initialMessages = prior,
+                            samplerConfig = SamplerConfig(topK = 20, topP = 0.9, temperature = 0.2)
+                        )
+                    ).use { conversation ->
+                        conversation.sendMessage(turns.last().text).toString()
+                    }
+                }
+            }.await()
+        }
         val prompt = buildGemmaPrompt(systemPrompt, turns)
         val deferred = serviceScope.async<String> {
             mutex.withLock {

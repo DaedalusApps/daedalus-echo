@@ -8,6 +8,7 @@ const val OFFLINE_GUARDRAIL = "Note: you are an offline assistant. You have no i
     "outdated. Base your answers on the provided notes and conversation."
 
 const val AI_TEXT_BUDGET_KEY = "ai_text_budget_chars"
+const val MEETING_GLOSSARY_KEY = "meeting_glossary"
 // Text longer than the budget is split into chunks before LLM analysis.
 // Default: 4096 total tokens − ~135 prompt − ~800 output = ~3160 tokens ≈ 12,600 chars.
 const val AI_TEXT_BUDGET_DEFAULT = 12_000
@@ -25,9 +26,9 @@ fun aiTextBudget(context: Context): Int =
         .getInt(AI_TEXT_BUDGET_KEY, AI_TEXT_BUDGET_DEFAULT)
         .coerceIn(AI_TEXT_BUDGET_MIN, AI_TEXT_BUDGET_MAX)
 
-const val CHUNK_SUMMARY_PROMPT = OFFLINE_GUARDRAIL + "\n\n" + """Summarize this section of a meeting transcript as concise bullet points.
+const val CHUNK_SUMMARY_PROMPT = OFFLINE_GUARDRAIL + "\n\n" + """Riassumi questa sezione della trascrizione di una riunione in punti concisi, in italiano.
 
-Return ONLY bullet points: main points starting with "- ", sub-points with "  - ". Include any action items. No JSON, no headers, no preamble.
+Restituisci SOLO punti elenco: punti principali con "- ", sotto-punti con "  - ". Includi decisioni, rischi, scadenze e azioni. Non inventare persone, ruoli o assegnatari. Nessun JSON, titolo o preambolo.
 
 Section:"""
 
@@ -50,24 +51,31 @@ fun chunkTranscript(transcript: String, budget: Int = AI_TEXT_BUDGET_DEFAULT): L
     return chunks
 }
 
-const val DEFAULT_PROMPT = OFFLINE_GUARDRAIL + "\n\n" + """Read the voice recording transcript below and extract its contents.
+const val DEFAULT_PROMPT = OFFLINE_GUARDRAIL + "\n\n" + """Agisci come segretario di riunione. Leggi integralmente la trascrizione e produci un resoconto fedele, conciso e in italiano naturale.
 
-Return ONLY a JSON object with exactly these 5 keys. No markdown, no code fences.
+Usa soltanto informazioni presenti nella trascrizione. Non correggere fatti incerti, non inventare partecipanti, decisioni, date o assegnatari. Se un elemento non è chiaro, omettilo.
 
-- "title": a specific title of up to 8 words describing what was actually discussed
-- "shortSummary": one sentence summarizing what the speaker said, using their specific words
-- "topics": JSON array of 3-5 keywords from the transcript
-- "mindMap": bullet list of main points from the transcript, each on its own line starting with "- ", sub-points starting with "  - "
-- "fullSummary": 2-3 sentences describing what was discussed, using specific subjects from the transcript
+Restituisci SOLO JSON valido, senza Markdown, commenti o testo prima/dopo. Le cinque chiavi devono essere esattamente:
+- "title": titolo concreto, massimo 8 parole
+- "shortSummary": 1-2 frasi chiare
+- "topics": array JSON di 3-5 argomenti realmente trattati
+- "mindMap": punti e sotto-punti in testo semplice, con "- " e "  - "
+- "fullSummary": sezioni "## Contesto", "## Punti principali", "## Decisioni", "## Questioni aperte", "## Azioni". Inserisci un'azione solo se esplicitamente concordata; se manca l'assegnatario scrivi "Da assegnare".
 
-Transcript:"""
+Ogni valore testuale deve essere italiano leggibile: non usare token, abbreviazioni senza spiegazione, markup tecnico o frammenti di parole.
+
+Trascrizione:"""
 
 fun activePrompt(context: Context): String {
-    val custom = context.getSharedPreferences("daedalus_prefs", Context.MODE_PRIVATE)
-        .getString("custom_prompt", null) ?: return DEFAULT_PROMPT
+    val prefs = context.getSharedPreferences("daedalus_prefs", Context.MODE_PRIVATE)
+    val custom = prefs.getString("custom_prompt", null)
+    val base = custom ?: DEFAULT_PROMPT
     // A saved custom prompt is usually an edit of DEFAULT_PROMPT, so it already carries the
     // guardrail — appending unconditionally would repeat it.
-    return if (custom.contains(OFFLINE_GUARDRAIL)) custom else "$custom\n\n$OFFLINE_GUARDRAIL"
+    val guarded = if (base.contains(OFFLINE_GUARDRAIL)) base else "$base\n\n$OFFLINE_GUARDRAIL"
+    val terms = prefs.getString(MEETING_GLOSSARY_KEY, "").orEmpty()
+        .lineSequence().map(String::trim).filter(String::isNotBlank).take(100).toList()
+    return if (terms.isEmpty()) guarded else guarded + "\n\nGlossario da preservare (non inventare varianti): " + terms.joinToString(", ")
 }
 
 fun buildNoteQuestionPrompt(title: String, summary: String): String =
